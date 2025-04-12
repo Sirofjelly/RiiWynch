@@ -63,20 +63,25 @@ void loop() {
       modeChangeComboActive = true;
       modeChangeDebounceTime = millis(); // Start debounce timer
 
-      // Display mode change confirmation
+      // Display mode change confirmation & Set initial speed for manual
       if (manualMode) {
           display.updateText("MAN");
+          state.setTargetPercentage(5); // Set speed to 5% on entering manual mode
       } else {
           display.updateText("AUTO");
+          // Optional: Reset speed when leaving manual mode?
+          // state.setTargetPercentage(0); // Example: Set speed to 0
       }
       // Keep message for a bit, then restore normal display
       // Note: This simple delay might interfere with other timing.
       // A non-blocking approach using millis() would be better for complex apps.
       delay(1000); // Show message for 1 second
       // Force display refresh after mode message
-      if (!stopPressed) { // Only refresh if stop is not currently pressed (otherwise it handles its own flashing)
-          display.update(state.getDisplayedPercentage());
-      }
+      // This update will show the 5% (or 0%) set above
+      display.update(state.getDisplayedPercentage());
+      // No need for the conditional !stopPressed check here anymore,
+      // the logic below handles recovery after stop release.
+
   } else if (!currentCombo) {
       modeChangeComboActive = false; // Reset flag when combo is released
   }
@@ -118,21 +123,24 @@ void loop() {
       wasStopFlashing = false;
     }
 
+    // Screen updates - Now happens in both modes
+    if (state.needsDisplayUpdate()) {
+        state.updateDisplayStep();
+        display.update(state.getDisplayedPercentage());
+    }
+    /* OLD Logic - commented out
     // Screen updates based on mode
     if (!manualMode) {
         // Automatic mode updates
-        // upButton.update(); // Moved up
-        // downButton.update(); // Moved up
         if (state.needsDisplayUpdate()) {
             state.updateDisplayStep();
             display.update(state.getDisplayedPercentage());
         }
     } else {
         // Manual mode updates (if any needed besides mode display)
-        // TODO: Add manual mode control logic here if needed
-        // Example: maybe display something different constantly?
-        // display.updateText("MANUAL ACTIVE"); // Example
+        // Display update is now handled above, regardless of mode.
     }
+    */
   }
 
   delay(5);
