@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "Settings.h"
+#include "StateManager.h"
 
 const char* ssid = "RiiWynch";
 const char* password = "912345678";
@@ -18,6 +19,7 @@ extern int chokeAngle;
 extern int brakeAngle;
 extern unsigned long stopCooldownDuration;
 extern bool manualMode;
+extern StateManager state;
 
 void handleRoot() {
   String html = R"rawliteral(
@@ -39,14 +41,13 @@ void handleRoot() {
       margin-bottom: 30px;
     }
     label {
-  display: inline-block;
-  width: 600px;      
-  text-align: right;
-  margin-right: 20px;
-  font-size: 2.25em;   
-  vertical-align: middle;
-}
-
+      display: inline-block;
+      width: 600px;
+      text-align: right;
+      margin-right: 20px;
+      font-size: 2.25em;
+      vertical-align: middle;
+    }
     input[type="text"] {
       width: 120px;
       padding: 10px;
@@ -54,7 +55,7 @@ void handleRoot() {
       border: 3px solid #ff00ff;
       color: #00ffff;
       font-family: 'Orbitron', sans-serif;
-      font-size: 2.25em; /* 1.5em → 2.25em */
+      font-size: 2.25em;
       border-radius: 10px;
       text-align: center;
     }
@@ -62,7 +63,7 @@ void handleRoot() {
       margin: 18px auto;
     }
     .button {
-      font-size: 2.7em; /* 1.8em → 2.7em */
+      font-size: 2.7em;
       padding: 14px 28px;
       border: 3px solid #ff00ff;
       color: #00ffff;
@@ -76,7 +77,7 @@ void handleRoot() {
       justify-content: center;
       align-items: center;
       margin-top: 35px;
-      font-size: 2.25em; /* 1.5em → 2.25em */
+      font-size: 2.25em;
     }
     .switch-label {
       margin-right: 15px;
@@ -130,6 +131,7 @@ void handleRoot() {
     <div class="form-row"><label>Brake Angle (°):</label><input name="brakeAngle" type="text" value="%BRAKE%"></div>
     <div class="form-row"><label>Stop Cooldown (ms):</label><input name="stopCooldownDuration" type="text" value="%STOPCD%"></div>
     <input type="submit" value="Apply" class="button">
+    <button type="submit" formaction="/set-default" class="button">Set as Default</button>
   </form>
 
   <div class="switch-container">
@@ -176,13 +178,23 @@ void handleSet() {
   if (server.hasArg("brakeAngle")) brakeAngle = server.arg("brakeAngle").toInt();
   if (server.hasArg("stopCooldownDuration")) stopCooldownDuration = server.arg("stopCooldownDuration").toInt();
 
-  saveSettings();
+  // ❌ Don't save yet – only apply temporarily
   handleRoot();
+}
+
+void handleSetDefault() {
+  saveSettings();
+  server.send(200, "text/html", "<html><body style='font-family:Orbitron; color:turquoise; background:#111;'><h2>Defaults saved!</h2><br><a href='/'>Back to Settings</a></body></html>");
 }
 
 void handleToggleManual() {
   if (server.hasArg("state")) {
     manualMode = server.arg("state") == "1";
+if (manualMode) {
+    state.setTargetPercentage(5);
+}
+
+
   }
   server.send(200, "text/plain", "OK");
 }
@@ -190,7 +202,8 @@ void handleToggleManual() {
 void setupWebUI() {
   WiFi.softAP(ssid, password);
   server.on("/", handleRoot);
-  server.on("/set", handleSet);
+  server.on("/set", HTTP_POST, handleSet);
+  server.on("/set-default", HTTP_POST, handleSetDefault);
   server.on("/toggleManual", handleToggleManual);
   server.begin();
 }

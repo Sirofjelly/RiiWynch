@@ -1,3 +1,11 @@
+
+#include "StateManager.h"
+extern StateManager state;
+extern bool manualMode;
+
+unsigned long manualModeHoldStart = 0;
+const unsigned long manualModeHoldDuration = 2000; // 2 seconds
+
 #include <Arduino.h>
 
 const int START_BUTTON_PIN = 2;

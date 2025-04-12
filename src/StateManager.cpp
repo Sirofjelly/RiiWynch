@@ -1,8 +1,17 @@
 #include "StateManager.h"
 #include <Arduino.h>
 
-int StateManager::getTargetPercentage() const { return targetPercentage; }
-int StateManager::getDisplayedPercentage() const { return displayedPercentage; }
+int StateManager::getTargetPercentage() const {
+    return targetPercentage;
+}
+
+int StateManager::getDisplayedPercentage() const {
+    return displayedPercentage;
+}
+
+void StateManager::setTargetPercentage(int percentage) {
+    targetPercentage = percentage;
+}
 
 void StateManager::increase() {
   if (targetPercentage < 100) targetPercentage += 5;
@@ -22,3 +31,4 @@ void StateManager::updateDisplayStep() {
   else if (displayedPercentage > targetPercentage) displayedPercentage--;
   lastUpdateTime = millis();
 }
+
