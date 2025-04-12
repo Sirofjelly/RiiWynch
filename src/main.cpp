@@ -1,3 +1,5 @@
+#include <Arduino.h>
+
 #include <WiFi.h>
 #include <WebServer.h>
 #include "Buttons.h"
@@ -83,4 +85,4 @@ void loop() {
   }
 
   delay(5);
-}
+} 
