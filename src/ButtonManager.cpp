@@ -38,3 +38,7 @@ void ButtonManager::update() {
 
   lastReading = reading;
 }
+
+bool ButtonManager::isPressed() const {
+  return currentState == LOW;
+}

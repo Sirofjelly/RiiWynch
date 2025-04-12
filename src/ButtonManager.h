@@ -6,6 +6,7 @@ class ButtonManager {
 public:
   ButtonManager(int pin, StateManager* stateMgr, bool increase);
   void update();
+  bool isPressed() const;
 private:
   int pin;
   bool increaseAction;
