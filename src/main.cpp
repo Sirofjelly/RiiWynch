@@ -65,7 +65,7 @@ void loop() {
 
       // Display mode change confirmation
       if (manualMode) {
-          display.updateText("MANUAL");
+          display.updateText("MAN");
       } else {
           display.updateText("AUTO");
       }
