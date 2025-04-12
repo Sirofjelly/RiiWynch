@@ -6,6 +6,9 @@ public:
   DisplayManager();
   void begin();
   void update(int percentage);
+  void updateText(const char* text);  // ✅ Public flashing display
+  void clear();                       // ✅ Public clear screen
+
 private:
   void drawFrame();
   void drawBar(int percentage);
