@@ -1,11 +1,11 @@
 #include <Arduino.h>
+#include "Settings.h"
 
 const int START_RELAY_PIN = 41;
 const int STOP_RELAY_PIN  = 42;
 
 unsigned long stopCooldownStart = 0;
 bool stopCooldownActive = false;
-unsigned long stopCooldownDuration = 10000;
 
 void setupRelays() {
   pinMode(START_RELAY_PIN, OUTPUT);

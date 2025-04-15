@@ -3,13 +3,9 @@
 #include "Servos.h"
 #include "Relays.h"
 #include "StateManager.h"
+#include "Settings.h"
 
 const int START_RELAY_PIN = 41;
-
-unsigned long starterRelayTime = 1000;
-unsigned long rampUpDuration = 1000;
-unsigned long rampDownDuration = 1000;
-float rampUpExponent = 3.0;
 
 bool startupInProgress = false;
 

@@ -11,11 +11,11 @@
 #include "Settings.h"  // 🆕 Include for loadSettings()
 
 DisplayManager display;
-StateManager state;
 ButtonManager upButton(7, &state, true);
 ButtonManager downButton(40, &state, false);
 
-bool manualMode = false;
+// Global mode state for cycling
+static int modeState = 0; // 0: Auto 1, 1: Auto 2, 2: Auto 3, 3: Manual
 
 StateManager& getGlobalStateManager() {
   return state;
@@ -23,7 +23,10 @@ StateManager& getGlobalStateManager() {
 
 void setup() {
   Serial.begin(115200);
-  loadSettings();       // 🟢 Load saved settings first
+  currentProfile = 0; // Always start in Auto 1
+  manualMode = false;
+  modeState = 0;
+  loadSettingsForProfile(currentProfile); // Load profile 1 settings
   setupButtons();
   setupRelays();
   setupServos();
@@ -50,42 +53,43 @@ void loop() {
   handleWebUI();
 
   // --- Mode Switching Logic ---
-  static bool modeChangeComboActive = false;
-  static unsigned long modeChangeDebounceTime = 0;
-  const unsigned long MODE_CHANGE_DEBOUNCE = 500; // ms debounce after change
+  // (Removed: old manualMode toggle logic. All switching is now handled by the profile/mode cycling logic below)
+  // --- End Mode Switching Logic ---
+
+  // Profile/mode switching logic
+  static bool profileSwitchComboActive = false;
+  static unsigned long profileSwitchDebounceTime = 0;
+  const unsigned long PROFILE_SWITCH_DEBOUNCE = 500; // ms debounce after change
 
   bool upHeld = upButton.isPressed();
   bool downHeld = downButton.isPressed();
   bool currentCombo = upHeld && downHeld && stopPressed;
 
-  if (currentCombo && !modeChangeComboActive && (millis() - modeChangeDebounceTime > MODE_CHANGE_DEBOUNCE)) {
-      manualMode = !manualMode;
-      modeChangeComboActive = true;
-      modeChangeDebounceTime = millis(); // Start debounce timer
-
-      // Display mode change confirmation & Set initial speed for manual
-      if (manualMode) {
-          display.updateText("MAN");
-          state.setTargetPercentage(5); // Set speed to 5% on entering manual mode
+  if (currentCombo && !profileSwitchComboActive && (millis() - profileSwitchDebounceTime > PROFILE_SWITCH_DEBOUNCE)) {
+      modeState = (modeState + 1) % 4;
+      if (modeState < 3) {
+          manualMode = false;
+          currentProfile = modeState;
+          loadSettingsForProfile(currentProfile);
       } else {
-          display.updateText("AUTO");
-          // Optional: Reset speed when leaving manual mode?
-          // state.setTargetPercentage(0); // Example: Set speed to 0
+          manualMode = true;
       }
-      // Keep message for a bit, then restore normal display
-      // Note: This simple delay might interfere with other timing.
-      // A non-blocking approach using millis() would be better for complex apps.
-      delay(1000); // Show message for 1 second
-      // Force display refresh after mode message
-      // This update will show the 5% (or 0%) set above
-      display.update(state.getDisplayedPercentage());
-      // No need for the conditional !stopPressed check here anymore,
-      // the logic below handles recovery after stop release.
+      profileSwitchComboActive = true;
+      profileSwitchDebounceTime = millis();
 
+      // Display mode change confirmation
+      if (modeState == 3) {
+          display.updateText("MAN");
+          state.setTargetPercentage(5);
+      } else {
+          String autoText = "Auto " + String(modeState + 1);
+          display.updateText(autoText.c_str());
+      }
+      delay(1000);
+      display.update(state.getDisplayedPercentage());
   } else if (!currentCombo) {
-      modeChangeComboActive = false; // Reset flag when combo is released
+      profileSwitchComboActive = false;
   }
-  // --- End Mode Switching Logic ---
 
   // Always update button states regardless of mode
   upButton.update();

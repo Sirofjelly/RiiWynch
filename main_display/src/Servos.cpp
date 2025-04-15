@@ -1,14 +1,10 @@
 #include <ESP32Servo.h>
 #include <Arduino.h>
+#include "Settings.h"
 
 const int CHOKE_SERVO_PIN = 36;
 const int BRAKE_SERVO_PIN = 47;
 const int GAS_SERVO_PIN   = 35;
-
-int chokeAngle = 55;
-int brakeAngle = 55;
-int gasIdleAngle = 10;
-int gasMaxAngle = 55;
 
 Servo chokeServo;
 Servo brakeServo;
