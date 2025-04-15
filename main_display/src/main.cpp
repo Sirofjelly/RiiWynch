@@ -79,7 +79,7 @@ void loop() {
 
       // Display mode change confirmation
       if (modeState == 3) {
-          display.updateText("MAN");
+          display.updateText("MANUAL");
           state.setTargetPercentage(5);
       } else {
           String autoText = "Auto " + String(modeState + 1);

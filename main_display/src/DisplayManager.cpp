@@ -42,8 +42,8 @@ void DisplayManager::drawBar(int percentage) {
 void DisplayManager::updateText(const char* text) {
   u8g2.clearBuffer();
   drawFrame();
-  // Use medium font for Auto 1/2/3
-  if (strcmp(text, "Auto 1") == 0 || strcmp(text, "Auto 2") == 0 || strcmp(text, "Auto 3") == 0) {
+  // Use medium font and center for all mode labels (Auto 1/2/3 and MANUAL)
+  if (strcmp(text, "Auto 1") == 0 || strcmp(text, "Auto 2") == 0 || strcmp(text, "Auto 3") == 0 || strcmp(text, "MANUAL") == 0) {
     u8g2.setFont(u8g2_font_helvB18_tf); // Medium font
     int16_t width = u8g2.getStrWidth(text);
     u8g2.drawStr((128 - width) / 2, 44, text);
