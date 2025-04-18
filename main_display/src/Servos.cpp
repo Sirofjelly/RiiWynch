@@ -21,6 +21,6 @@ void setupServos() {
 }
 
 void updateServos(bool chokePressed, bool brakePressed) {
-  chokeServo.write(chokePressed ? chokeAngle : 0);
+  chokeServo.write(chokePressed ? (180 - chokeAngle) : 180);
   brakeServo.write(brakePressed ? brakeAngle : 0);
 }
