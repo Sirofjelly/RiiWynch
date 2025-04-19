@@ -15,7 +15,7 @@ void setupServos() {
   brakeServo.attach(BRAKE_SERVO_PIN);
   gasServo.attach(GAS_SERVO_PIN);
 
-  chokeServo.write(0);
+  chokeServo.write(180); // Set to unpressed (neutral) position to avoid initial sweep
   brakeServo.write(0);
   gasServo.write(0);
 }
