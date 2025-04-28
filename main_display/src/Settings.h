@@ -6,6 +6,7 @@ void loadSettings();
 void saveSettings();
 
 // Declare global variables for profile management
+// 0: SURF, 1: SKIM, 2: SMOOTH, 3: MANUAL
 extern int currentProfile;
 extern const int totalProfiles;
 

@@ -26,14 +26,11 @@ extern int currentProfile; // Use the `extern` declaration from Settings.h
 const int totalProfiles = 3; // Example: 3 profiles
 
 void handleRoot() {
+  if (manualMode) currentProfile = 3;
   loadSettingsForProfile(currentProfile); // Always load current profile's values before rendering
-  
-  // Begin sending the HTML in chunks to avoid buffer issues
-  server.setContentLength(CONTENT_LENGTH_UNKNOWN); // Tell the client we don't know the exact content length
-  server.send(200, "text/html", ""); // Send the header only
-  
-  // Send HTML in chunks
-  // First chunk - the beginning of the HTML file
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/html", "");
+  const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
   String html_part1 = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -41,120 +38,26 @@ void handleRoot() {
   <title>RiiWynch Settings</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
   <style>
-    body {
-      background-color: #111;
-      color: #00ffff;
-      font-family: 'Orbitron', sans-serif;
-      text-align: center;
-      padding: 30px;
-    }
-    h2 {
-      font-size: 3em;
-      margin-bottom: 30px;
-    }
-    .status-message {
-      background-color: rgba(0, 255, 0, 0.2);
-      color: #00ff00;
-      padding: 15px;
-      margin: 20px auto;
-      border-radius: 10px;
-      border: 2px solid #00ff00;
-      max-width: 80%;
-      font-size: 2em;
-      display: none;
-    }
-    label {
-      display: inline-block;
-      width: 600px;
-      text-align: right;
-      margin-right: 20px;
-      font-size: 2.25em;
-      vertical-align: middle;
-    }
-    input[type="text"] {
-      width: 120px;
-      padding: 10px;
-      background: transparent;
-      border: 3px solid #ff00ff;
-      color: #00ffff;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 2.25em;
-      border-radius: 10px;
-      text-align: center;
-    }
-    .form-row {
-      margin: 18px auto;
-    }
-    .button {
-      font-size: 2.7em;
-      padding: 14px 28px;
-      border: 3px solid #ff00ff;
-      color: #00ffff;
-      background: transparent;
-      font-family: 'Orbitron', sans-serif;
-      border-radius: 10px;
-      margin: 30px 10px;
-      cursor: pointer;
-    }
-    .switch-container {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin-top: 35px;
-      font-size: 2.25em;
-    }
-    .switch-label {
-      margin-right: 15px;
-    }
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 70px;
-      height: 40px;
-    }
-    .switch input {
-      display: none;
-    }
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      background-color: #ccc;
-      border-radius: 40px;
-      top: 0; left: 0; right: 0; bottom: 0;
-      transition: .4s;
-    }
-    .slider:before {
-      content: "";
-      position: absolute;
-      height: 30px;
-      width: 30px;
-      left: 5px;
-      bottom: 5px;
-      background-color: white;
-      transition: .4s;
-      border-radius: 50%;
-    }
-    input:checked + .slider {
-      background-color: #2196F3;
-    }
-    input:checked + .slider:before {
-      transform: translateX(30px);
-    }
+    body { background-color: #111; color: #00ffff; font-family: 'Orbitron', sans-serif; text-align: center; padding: 36px; }
+    h2 { font-size: 3.3em; margin-bottom: 35px; }
+    .status-message { background-color: rgba(0, 255, 0, 0.2); color: #00ff00; padding: 18px; margin: 24px auto; border-radius: 13px; border: 2.75px solid #00ff00; max-width: 90%; font-size: 2em; display: none; }
+    .form-row { display: flex; align-items: center; justify-content: flex-start; margin: 18px auto; max-width: 900px; }
+    label { display: inline-block; width: 500px; text-align: right; margin-right: 40px; font-size: 2em; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    input[type="text"] { width: 5ch; min-width: 5ch; max-width: 5ch; padding: 11px; background: transparent; border: 2.75px solid #ff00ff; color: #00ffff; font-family: 'Orbitron', sans-serif; font-size: 2em; border-radius: 13px; text-align: center; margin-left: 0; }
+    .button { font-size: 2em; width: 260px; min-width: 10ch; max-width: 20ch; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: 'Orbitron', sans-serif; border-radius: 13px; margin: 10px 0 26px 0; cursor: pointer; display: inline-block; white-space: nowrap; }
+    .mode-row { font-size: 2em; margin: 26px auto 0 auto; display: flex; justify-content: center; align-items: center; gap: 16px; }
+    .mode-btn-row { display: flex; justify-content: center; margin: 10px auto 26px auto; }
+    #profileInput { width: 260px; min-width: 10ch; max-width: 20ch; font-size: 2em; }
   </style>
 </head>
 <body>
   <h2>RiiWynch Engine Settings</h2>
   <div id="statusMessage" class="status-message"></div>
-  <div class="form-row"><label>Current Profile:</label><input type="text" id="profileInput" value="Auto )rawliteral";
-  
-  // Add the current profile number
-  html_part1 += String(currentProfile + 1);
+  <div class="mode-row"><input type="text" id="profileInput" value=")rawliteral";
+  html_part1 += modeNames[manualMode ? 3 : currentProfile];
   html_part1 += R"rawliteral(" readonly></div>
-  <button type="button" class="button" onclick="switchProfile()">Switch Profile</button>
-  
+  <div class="mode-btn-row"><button type="button" class="button" onclick="switchProfile()">Change Mode</button></div>
   <form id="settingsForm" onsubmit="return false;">)rawliteral";
-  
-  // Send first chunk
   server.sendContent(html_part1);
   
   // Second chunk - form fields with values
@@ -172,26 +75,21 @@ void handleRoot() {
   // Send second chunk
   server.sendContent(html_part2);
   
-  // Third chunk - buttons and manual mode switch
+  // Third chunk - buttons
   String html_part3 = R"rawliteral(
     <button type="button" class="button" onclick="applySettings()">Apply</button>
     <button type="button" class="button" onclick="saveSettings()">Save</button>
   </form>
 
-  <div class="switch-container">
-    <span class="switch-label">Manual Mode:</span>
-    <label class="switch">
-      <input type="checkbox" onchange="toggleManualMode(this)" )rawliteral";
-  
-  // Add manual mode status
-  html_part3 += manualMode ? "checked" : "";
-  
-  html_part3 += R"rawliteral(>
-      <span class="slider"></span>
-    </label>
-  </div>
-
   <script>
+    const modeNames = ["SURF", "SKIM", "SMOOTH", "MANUAL"];
+    function updateModeBox() {
+      fetch('/getMode')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('profileInput').value = modeNames[data.manualMode ? 3 : data.profile];
+        });
+    }
     function showStatusMessage(message, isSuccess = true) {
       const statusElem = document.getElementById('statusMessage');
       statusElem.style.display = 'block';
@@ -199,69 +97,31 @@ void handleRoot() {
       statusElem.style.borderColor = isSuccess ? '#00ff00' : '#ff0000';
       statusElem.style.color = isSuccess ? '#00ff00' : '#ff0000';
       statusElem.innerHTML = message;
-      
-      // Auto-hide after 5 seconds
-      setTimeout(() => {
-        statusElem.style.display = 'none';
-      }, 5000);
+      setTimeout(() => { statusElem.style.display = 'none'; }, 5000);
     }
-
     function applySettings() {
       const formData = new FormData(document.getElementById('settingsForm'));
-      
-      fetch('/set', {
-        method: 'POST',
-        body: formData
-      })
+      fetch('/set', { method: 'POST', body: formData })
       .then(response => response.text())
-      .then(data => {
-        showStatusMessage('Settings applied successfully!');
-      })
-      .catch(error => {
-        showStatusMessage('Error applying settings: ' + error, false);
-      });
+      .then(data => { showStatusMessage('Settings applied successfully!'); })
+      .catch(error => { showStatusMessage('Error applying settings: ' + error, false); });
+      updateModeBox();
     }
-
     function saveSettings() {
       const form = document.getElementById('settingsForm');
       const formData = new FormData(form);
-      fetch('/save', {
-        method: 'POST',
-        body: formData
-      })
+      fetch('/save', { method: 'POST', body: formData })
       .then(response => response.json())
-      .then(data => {
-        if(data.success) {
-          showStatusMessage('Settings saved successfully');
-        } else {
-          showStatusMessage('Error saving settings', false);
-        }
-      })
-      .catch(error => {
-        showStatusMessage('Error saving settings: ' + error, false);
-      });
-      return false; // Prevent form submission
+      .then(data => { if(data.success) { showStatusMessage('Settings saved successfully'); } else { showStatusMessage('Error saving settings', false); } })
+      .catch(error => { showStatusMessage('Error saving settings: ' + error, false); });
+      updateModeBox();
+      return false;
     }
-    
-    function toggleManualMode(checkbox) {
-      fetch('/toggleManual?state=' + (checkbox.checked ? '1' : '0'))
-        .then(response => response.text())
-        .then(data => {
-          showStatusMessage('Manual mode ' + (checkbox.checked ? 'enabled' : 'disabled'));
-        })
-        .catch(error => {
-          showStatusMessage('Error toggling manual mode: ' + error, false);
-        });
-    }
-    
     function switchProfile() {
       fetch('/switchProfile')
         .then(response => response.json())
         .then(data => {
-          // Update the profile display without reloading
-          document.getElementById('profileInput').value = 'Auto ' + data.profile;
-          
-          // Update all form fields with the values from the new profile
+          updateModeBox();
           document.querySelector('input[name="starterRelayTime"]').value = data.starterTime;
           document.querySelector('input[name="rampUpDuration"]').value = data.rampUpDuration;
           document.querySelector('input[name="rampUpExponent"]').value = data.rampUpExponent;
@@ -271,25 +131,16 @@ void handleRoot() {
           document.querySelector('input[name="chokeAngle"]').value = data.chokeAngle;
           document.querySelector('input[name="brakeAngle"]').value = data.brakeAngle;
           document.querySelector('input[name="stopCooldownDuration"]').value = data.stopCooldownDuration;
-          
-          // Update manual mode checkbox
-          document.querySelector('.switch input[type="checkbox"]').checked = data.manualMode === true;
-          
-          // Show a success message
-          showStatusMessage('Switched to Profile ' + data.profile);
+          showStatusMessage('Switched to Mode ' + modeNames[data.manualMode ? 3 : (data.profile-1)]);
         })
-        .catch(error => {
-          showStatusMessage('Error switching profile: ' + error, false);
-        });
+        .catch(error => { showStatusMessage('Error switching mode: ' + error, false); });
     }
+    // On page load, sync mode box
+    window.onload = updateModeBox;
   </script>
 </body>
 </html>)rawliteral";
-  
-  // Send final chunk
   server.sendContent(html_part3);
-  
-  // End response
   server.sendContent("");
 }
 
@@ -398,6 +249,7 @@ void handleSetDefault() {
   }
   
   // Explicitly save to the current profile
+  if (manualMode) currentProfile = 3;
   Serial.printf("🔵 Now saving to profile %d...\n", currentProfile + 1);
   saveSettingsForProfile(currentProfile);
   
@@ -433,14 +285,16 @@ if (manualMode) {
 // Add a new handler to switch profiles
 void handleSwitchProfile() {
   // Save current settings to the current profile
+  if (manualMode) currentProfile = 3;
   saveSettingsForProfile(currentProfile);
   
   // The saveSettingsForProfile function should handle EEPROM commit internally
   
   Serial.printf("💾 Saved settings to profile %d before switching\n", currentProfile + 1);
   
-  // Cycle to the next profile
-  currentProfile = (currentProfile + 1) % totalProfiles;
+  // Cycle to the next profile (0-3)
+  currentProfile = (currentProfile + 1) % 4;
+  manualMode = (currentProfile == 3);
   Serial.printf("🔄 Switching to profile %d\n", currentProfile + 1);
   
   // Load settings for the new profile
@@ -464,6 +318,14 @@ void handleSwitchProfile() {
   server.send(200, "application/json", jsonResponse);
 }
 
+void handleGetMode() {
+  String jsonResponse = "{";
+  jsonResponse += "\"profile\":" + String(currentProfile) + ",";
+  jsonResponse += "\"manualMode\":" + String(manualMode ? "true" : "false");
+  jsonResponse += "}";
+  server.send(200, "application/json", jsonResponse);
+}
+
 void setupWebUI() {
   WiFi.softAP(ssid, password);
   server.on("/", handleRoot);
@@ -471,6 +333,7 @@ void setupWebUI() {
   server.on("/save", HTTP_POST, handleSetDefault); // Change from "/set-default" to "/save"
   server.on("/toggleManual", handleToggleManual);
   server.on("/switchProfile", handleSwitchProfile);
+  server.on("/getMode", handleGetMode); // New endpoint
   server.begin();
 }
 

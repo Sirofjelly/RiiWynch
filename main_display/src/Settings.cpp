@@ -26,7 +26,7 @@ bool manualMode = false;
 StateManager state;
 
 // Define global variables for profile management
-const int totalProfiles = 3; // Example: 3 profiles
+const int totalProfiles = 4; // Updated to 4 profiles
 
 // Ensure `currentProfile` is defined only here
 int currentProfile = 0;

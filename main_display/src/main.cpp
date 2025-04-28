@@ -15,7 +15,8 @@ ButtonManager upButton(7, &state, true);
 ButtonManager downButton(40, &state, false);
 
 // Global mode state for cycling
-static int modeState = 0; // 0: Auto 1, 1: Auto 2, 2: Auto 3, 3: Manual
+static int modeState = 0; // 0: SURF, 1: SKIM, 2: SMOOTH, 3: MANUAL
+static const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
 
 StateManager& getGlobalStateManager() {
   return state;
@@ -23,10 +24,10 @@ StateManager& getGlobalStateManager() {
 
 void setup() {
   Serial.begin(115200);
-  currentProfile = 0; // Always start in Auto 1
+  currentProfile = 0; // Always start in SURF
   manualMode = false;
   modeState = 0;
-  loadSettingsForProfile(currentProfile); // Load profile 1 settings
+  loadSettingsForProfile(currentProfile); // Load SURF settings
   setupButtons();
   setupRelays();
   setupServos();
@@ -37,6 +38,9 @@ void setup() {
 }
 
 void loop() {
+  // Keep modeState in sync with currentProfile/manualMode (set by Web UI or buttons)
+  modeState = manualMode ? 3 : currentProfile;
+
   bool startPressed = isStartPressed();
   bool stopPressed  = isStopPressed();
   bool chokePressed = isChokePressed();
@@ -73,17 +77,16 @@ void loop() {
           loadSettingsForProfile(currentProfile);
       } else {
           manualMode = true;
+          currentProfile = 3;
+          loadSettingsForProfile(3);
       }
       profileSwitchComboActive = true;
       profileSwitchDebounceTime = millis();
 
       // Display mode change confirmation
+      display.updateText(modeNames[modeState]);
       if (modeState == 3) {
-          display.updateText("MANUAL");
           state.setTargetPercentage(5);
-      } else {
-          String autoText = "Auto " + String(modeState + 1);
-          display.updateText(autoText.c_str());
       }
       delay(1000);
       display.update(state.getDisplayedPercentage());
