@@ -59,3 +59,19 @@ void DisplayManager::updateText(const char* text) {
 void DisplayManager::clear() {
   u8g2.clearDisplay();
 }
+
+void DisplayManager::blinkStopText(bool show) {
+  u8g2.clearBuffer();
+  drawFrame();
+  // Do not draw the bar when blinking STOP
+  if (show) {
+    u8g2.setFont(u8g2_font_logisoso42_tf);
+    const char* text = "STOP";
+    int16_t width = u8g2.getStrWidth(text);
+    // Center vertically and horizontally
+    int16_t x = (128 - width) / 2;
+    int16_t y = 38 + (64-38)/2; // visually center in 64px height
+    u8g2.drawStr(x, y, text);
+  }
+  u8g2.sendBuffer();
+}

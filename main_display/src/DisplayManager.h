@@ -9,6 +9,7 @@ public:
   void updateText(const char* text);  // ✅ Public flashing display
   void clear();                       // ✅ Public clear screen
   void init();
+  void blinkStopText(bool show);
 
 private:
   void drawFrame();

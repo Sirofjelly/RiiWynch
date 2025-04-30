@@ -112,15 +112,14 @@ void loop() {
 
   if (stopPressed) {
     unsigned long now = millis();
-    if (now - lastFlashTime > 300) {
+    if (now - lastFlashTime > 600) { // slower blink
       flashState = !flashState;
       lastFlashTime = now;
-
-      if (flashState) {
-        display.updateText("STOP");
-      } else {
-        display.clear();
-      }
+    }
+    if (flashState) {
+      display.blinkStopText(true); // show STOP text only
+    } else {
+      display.blinkStopText(false); // hide STOP text, keep frame/bar
     }
     wasStopFlashing = true;
   } else {
