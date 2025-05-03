@@ -66,21 +66,19 @@ void loop() {
   bool downHeld = downButton.isPressed();
   bool currentCombo = upHeld && downHeld && stopPressed;
 
+  // Fixed logic to ensure "Smooth" profile is not skipped
   if (currentCombo && !profileSwitchComboActive && (millis() - profileSwitchDebounceTime > PROFILE_SWITCH_DEBOUNCE)) {
       modeState = (modeState + 1) % 4;
-      if (modeState < 3) {
-          manualMode = false;
-          currentProfile = modeState;
-          loadSettingsForProfile(currentProfile);
-      } else {
-          manualMode = true;
-      }
+      manualMode = (modeState == 3);
+      currentProfile = modeState; // Correctly set currentProfile to modeState
+      loadSettingsForProfile(currentProfile);
+
       profileSwitchComboActive = true;
       profileSwitchDebounceTime = millis();
 
       // Display mode change confirmation
       display.updateText(modeNames[modeState]);
-      if (modeState == 3) {
+      if (manualMode) {
           state.setTargetPercentage(5);
       }
       delay(1000);

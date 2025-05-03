@@ -135,7 +135,7 @@ void handleRoot() {
           document.querySelector('input[name="chokeAngle"]').value = data.chokeAngle;
           document.querySelector('input[name="brakeAngle"]').value = data.brakeAngle;
           document.querySelector('input[name="stopCooldownDuration"]').value = data.stopCooldownDuration;
-          showStatusMessage('Switched to Mode ' + modeNames[data.manualMode ? 3 : (data.profile-1)]);
+          showStatusMessage('Switched to Mode ' + modeNames[data.manualMode ? 3 : data.profile]);
         })
         .catch(error => { showStatusMessage('Error switching mode: ' + error, false); });
     }
@@ -289,42 +289,35 @@ void handleToggleManual() {
   server.send(200, "text/plain", "OK");
 }
 
-// Add a new handler to switch profiles
+// Ensure the Web UI correctly reflects the current profile
 void handleSwitchProfile() {
-  // Save current settings to the current profile
-  if (manualMode) currentProfile = 3;
-  saveSettingsForProfile(currentProfile);
-  
-  // The saveSettingsForProfile function should handle EEPROM commit internally
-  
-  Serial.printf("💾 Saved settings to profile %d before switching\n", currentProfile + 1);
-  
-  // Cycle to the next profile (0-3)
-  currentProfile = (currentProfile + 1) % 4;
-  manualMode = (currentProfile == 3);
-  Serial.printf("🔄 Switching to profile %d\n", currentProfile + 1);
-  
-  // Load settings for the new profile
-  loadSettingsForProfile(currentProfile);
-  currentState = IDLE; // Reset state machine to prevent ramping and sync
-  display.updateText(modeNames[manualMode ? 3 : currentProfile]);
-  
-  // Prepare JSON response with all loaded settings
-  String jsonResponse = "{";
-  jsonResponse += "\"profile\":" + String(currentProfile + 1) + ",";
-  jsonResponse += "\"starterTime\":" + String(starterRelayTime) + ",";
-  jsonResponse += "\"rampUpDuration\":" + String(rampUpDuration) + ",";
-  jsonResponse += "\"rampUpExponent\":" + String(rampUpExponent, 2) + ",";
-  jsonResponse += "\"rampDownDuration\":" + String(rampDownDuration) + ",";
-  jsonResponse += "\"gasIdleAngle\":" + String(gasIdleAngle) + ",";
-  jsonResponse += "\"gasMaxAngle\":" + String(gasMaxAngle) + ",";
-  jsonResponse += "\"chokeAngle\":" + String(chokeAngle) + ",";
-  jsonResponse += "\"brakeAngle\":" + String(brakeAngle) + ",";
-  jsonResponse += "\"stopCooldownDuration\":" + String(stopCooldownDuration) + ",";
-  jsonResponse += "\"manualMode\":" + String(manualMode ? "true" : "false");
-  jsonResponse += "}";
-  
-  server.send(200, "application/json", jsonResponse);
+    saveSettingsForProfile(currentProfile);
+    Serial.printf("💾 Saved settings to profile %d before switching\n", currentProfile + 1);
+
+    // Cycle to the next profile (0-3)
+    currentProfile = (currentProfile + 1) % 4;
+    manualMode = (currentProfile == 3);
+    loadSettingsForProfile(currentProfile);
+
+    Serial.printf("🔄 Switching to profile %d\n", currentProfile + 1);
+    display.updateText(modeNames[currentProfile]);
+
+    // Prepare JSON response with all loaded settings
+    String jsonResponse = "{";
+    jsonResponse += "\"profile\":" + String(currentProfile) + ","; // Correctly reflect the current profile
+    jsonResponse += "\"starterTime\":" + String(starterRelayTime) + ",";
+    jsonResponse += "\"rampUpDuration\":" + String(rampUpDuration) + ",";
+    jsonResponse += "\"rampUpExponent\":" + String(rampUpExponent, 2) + ",";
+    jsonResponse += "\"rampDownDuration\":" + String(rampDownDuration) + ",";
+    jsonResponse += "\"gasIdleAngle\":" + String(gasIdleAngle) + ",";
+    jsonResponse += "\"gasMaxAngle\":" + String(gasMaxAngle) + ",";
+    jsonResponse += "\"chokeAngle\":" + String(chokeAngle) + ",";
+    jsonResponse += "\"brakeAngle\":" + String(brakeAngle) + ",";
+    jsonResponse += "\"stopCooldownDuration\":" + String(stopCooldownDuration) + ",";
+    jsonResponse += "\"manualMode\":" + String(manualMode ? "true" : "false");
+    jsonResponse += "}";
+
+    server.send(200, "application/json", jsonResponse);
 }
 
 void handleGetMode() {
