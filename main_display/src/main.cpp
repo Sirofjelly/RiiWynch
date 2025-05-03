@@ -67,10 +67,11 @@ void loop() {
   bool currentCombo = upHeld && downHeld && stopPressed;
 
   // Fixed logic to ensure "Smooth" profile is not skipped
+  // Ensure button logic synchronizes with Web UI profile changes
   if (currentCombo && !profileSwitchComboActive && (millis() - profileSwitchDebounceTime > PROFILE_SWITCH_DEBOUNCE)) {
-      modeState = (modeState + 1) % 4;
+      modeState = (currentProfile + 1) % 4; // Synchronize modeState with currentProfile
       manualMode = (modeState == 3);
-      currentProfile = modeState; // Correctly set currentProfile to modeState
+      currentProfile = modeState;
       loadSettingsForProfile(currentProfile);
 
       profileSwitchComboActive = true;
