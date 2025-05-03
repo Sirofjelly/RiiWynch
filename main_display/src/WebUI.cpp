@@ -3,6 +3,8 @@
 #include <EEPROM.h>
 #include "Settings.h"
 #include "StateManager.h"
+#include "DisplayManager.h"
+#include "StartupManager.h"
 
 const char* ssid = "RiiWynch";
 const char* password = "912345678";
@@ -22,6 +24,8 @@ extern unsigned long stopCooldownDuration;
 extern bool manualMode;
 extern StateManager state;
 extern int currentProfile; // Use the `extern` declaration from Settings.h
+extern DisplayManager display;
+extern const char* modeNames[4];
 
 const int totalProfiles = 3; // Example: 3 profiles
 
@@ -273,11 +277,14 @@ void handleSetDefault() {
 void handleToggleManual() {
   if (server.hasArg("state")) {
     manualMode = server.arg("state") == "1";
-if (manualMode) {
-    state.setTargetPercentage(5);
-}
-
-
+    if (manualMode) {
+      state.setTargetPercentage(5);
+      currentState = IDLE; // Reset state machine to prevent ramping
+      display.updateText(modeNames[3]);
+    } else {
+      currentState = IDLE;
+      display.updateText(modeNames[currentProfile]);
+    }
   }
   server.send(200, "text/plain", "OK");
 }
@@ -299,6 +306,8 @@ void handleSwitchProfile() {
   
   // Load settings for the new profile
   loadSettingsForProfile(currentProfile);
+  currentState = IDLE; // Reset state machine to prevent ramping and sync
+  display.updateText(modeNames[manualMode ? 3 : currentProfile]);
   
   // Prepare JSON response with all loaded settings
   String jsonResponse = "{";

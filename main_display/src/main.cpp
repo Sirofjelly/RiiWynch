@@ -15,8 +15,8 @@ ButtonManager upButton(7, &state, true);
 ButtonManager downButton(40, &state, false);
 
 // Global mode state for cycling
-static int modeState = 0; // 0: SURF, 1: SKIM, 2: SMOOTH, 3: MANUAL
-static const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
+static int modeState = 0; // 0: Auto 1, 1: Auto 2, 2: Auto 3, 3: Manual
+const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
 
 StateManager& getGlobalStateManager() {
   return state;
@@ -24,10 +24,10 @@ StateManager& getGlobalStateManager() {
 
 void setup() {
   Serial.begin(115200);
-  currentProfile = 0; // Always start in SURF
+  currentProfile = 0; // Always start in Auto 1
   manualMode = false;
   modeState = 0;
-  loadSettingsForProfile(currentProfile); // Load SURF settings
+  loadSettingsForProfile(currentProfile); // Load profile 1 settings
   setupButtons();
   setupRelays();
   setupServos();
@@ -38,9 +38,6 @@ void setup() {
 }
 
 void loop() {
-  // Keep modeState in sync with currentProfile/manualMode (set by Web UI or buttons)
-  modeState = manualMode ? 3 : currentProfile;
-
   bool startPressed = isStartPressed();
   bool stopPressed  = isStopPressed();
   bool chokePressed = isChokePressed();
@@ -77,8 +74,6 @@ void loop() {
           loadSettingsForProfile(currentProfile);
       } else {
           manualMode = true;
-          currentProfile = 3;
-          loadSettingsForProfile(3);
       }
       profileSwitchComboActive = true;
       profileSwitchDebounceTime = millis();
@@ -147,6 +142,11 @@ void loop() {
         // Display update is now handled above, regardless of mode.
     }
     */
+  }
+
+  // In MANUAL_CONTROL state, always update servo to match percentage (auto and manual mode)
+  if (currentState == MANUAL_CONTROL) {
+    gasServo.write(calculateTargetAngle());
   }
 
   delay(5);

@@ -50,21 +50,29 @@ void updateStartup(bool startPressed, bool stopPressed) {
 
   switch (currentState) {
     case IDLE:
+      if (manualMode && startupInProgress) {
+        // If manual mode was just activated (e.g. via WebUI), force state machine reset
+        startupInProgress = false;
+        currentState = IDLE;
+        break;
+      }
       if (startPressed && !startupInProgress) {
-        gasServo.write(gasIdleAngle);
-        stateStartTime = millis();
-        startupInProgress = true;
-
         if (manualMode) {
-          digitalWrite(START_RELAY_PIN, LOW);
+          // In manual mode, only activate starter relay for the set time, do not move servo
+          stateStartTime = millis();
+          startupInProgress = true;
           currentState = STARTER_ON;
         } else {
+          gasServo.write(gasIdleAngle);
+          stateStartTime = millis();
+          startupInProgress = true;
           currentState = WAIT_FOR_IDLE_REACHED;
         }
       }
       break;
 
     case WAIT_FOR_IDLE_REACHED:
+      if (manualMode) break; // skip this state in manual mode
       if (millis() - stateStartTime >= 300) {
         digitalWrite(START_RELAY_PIN, LOW);
         stateStartTime = millis();
@@ -76,9 +84,11 @@ void updateStartup(bool startPressed, bool stopPressed) {
       if (millis() - stateStartTime >= starterRelayTime) {
         digitalWrite(START_RELAY_PIN, HIGH);
         stateStartTime = millis();
-
         if (manualMode) {
+          // Go directly to MANUAL_CONTROL after starter relay in manual mode
           currentState = MANUAL_CONTROL;
+          startupInProgress = false;
+          return; // Prevent further state machine processing in this loop
         } else {
           rampStartAngle = gasIdleAngle;
           rampTargetAngle = gasMaxAngle;
@@ -88,36 +98,42 @@ void updateStartup(bool startPressed, bool stopPressed) {
       break;
 
     case RAMP_UP: {
-      float progress = float(millis() - stateStartTime) / rampUpDuration;
-      if (progress >= 1.0) {
-        gasServo.write(gasMaxAngle);
-        rampStartAngle = gasMaxAngle;
-        rampTargetAngle = calculateTargetAngle();
-        stateStartTime = millis();
-        currentState = RAMP_DOWN_TO_TARGET;
-      } else {
-        float shaped = pow(progress, rampUpExponent);
-        int angle = rampStartAngle + shaped * (rampTargetAngle - rampStartAngle);
-        gasServo.write(angle);
+      if (manualMode) break; // never ramp in manual mode
+      {
+        float progress = float(millis() - stateStartTime) / rampUpDuration;
+        if (progress >= 1.0) {
+          gasServo.write(gasMaxAngle);
+          rampStartAngle = gasMaxAngle;
+          rampTargetAngle = calculateTargetAngle();
+          stateStartTime = millis();
+          currentState = RAMP_DOWN_TO_TARGET;
+        } else {
+          float shaped = pow(progress, rampUpExponent);
+          int angle = rampStartAngle + shaped * (rampTargetAngle - rampStartAngle);
+          gasServo.write(angle);
+        }
       }
       break;
     }
 
     case RAMP_DOWN_TO_TARGET: {
-      float progress = float(millis() - stateStartTime) / rampDownDuration;
-      if (progress >= 1.0) {
-        gasServo.write(rampTargetAngle);
-        currentState = MANUAL_CONTROL;  // ✅ Allows post-start speed changes
-        startupInProgress = false;
-      } else {
-        int angle = rampStartAngle + progress * (rampTargetAngle - rampStartAngle);
-        gasServo.write(angle);
+      if (manualMode) break; // never ramp in manual mode
+      {
+        float progress = float(millis() - stateStartTime) / rampDownDuration;
+        if (progress >= 1.0) {
+          gasServo.write(rampTargetAngle);
+          currentState = MANUAL_CONTROL;  // ✅ Allows post-start speed changes
+          startupInProgress = false;
+        } else {
+          int angle = rampStartAngle + progress * (rampTargetAngle - rampStartAngle);
+          gasServo.write(angle);
+        }
       }
       break;
     }
 
     case MANUAL_CONTROL:
-      gasServo.write(calculateTargetAngle());
+      // In manual mode, servo is only moved by percentage changes elsewhere
       break;
   }
 }
