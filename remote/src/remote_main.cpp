@@ -54,8 +54,23 @@ unsigned long lastBtnTx = 0;
 unsigned long lastHB = 0;
 const unsigned long BTN_TX_MS = 50;
 const unsigned long HB_MS = 500;
+const unsigned long HEARTBEAT_INTERVAL = 500;
+unsigned long lastHeartbeatSent = 0;
 char txBuf[32];
 uint16_t pktCnt = 0;
+
+// Variable to track the last reported state of action buttons in START mode
+static bool lastReportedAnyPressedState = false;
+
+// ─── LoRa Non-Blocking Receive ───
+volatile bool loraReceivedFlag = false;
+volatile bool loraEnableInterrupt = true; // To safely temporarily disable ISR processing
+
+void IRAM_ATTR loraIsr() {
+  if (loraEnableInterrupt) {
+    loraReceivedFlag = true;
+  }
+}
 
 // ─── Prototypes ───
 void drawStart(), drawMenu();
@@ -64,6 +79,7 @@ void incPct(), decPct();
 uint16_t readBattery();
 void handleButton(int, int&, int&, unsigned long&, unsigned long&, void(*)());
 void registerTripleTap();
+void sendHeartbeat();
 
 // ─────────────────────────────────────────
 //                 SETUP
@@ -93,6 +109,16 @@ void setup() {
     radio.setCodingRate(5);
     radio.setBandwidth(125.0);
     Serial.println("LoRa ready.");
+
+    // Setup for non-blocking receive
+    radio.setDio1Action(loraIsr);
+    int startRxState = radio.startReceive();
+    if (startRxState != RADIOLIB_ERR_NONE) {
+      Serial.print(F("Initial startReceive failed, code "));
+      Serial.println(startRxState);
+    } else {
+      Serial.println("LoRa receiver started.");
+    }
   }
 }
 
@@ -100,30 +126,70 @@ void setup() {
 //                 LOOP
 // ─────────────────────────────────────────
 void loop() {
+  // --- LoRa non-blocking receive: sync from main ---
+  if (loraReceivedFlag) {
+    loraEnableInterrupt = false; // Disable interrupt processing temporarily
+    loraReceivedFlag = false;
+
+    char loraRxBuf[32]; // Buffer for incoming message
+    int packetLength = radio.getPacketLength();
+    size_t readLen = (packetLength < (sizeof(loraRxBuf) - 1)) ? packetLength : (sizeof(loraRxBuf) - 1);
+
+    int loraReadStatus = radio.readData((uint8_t*)loraRxBuf, readLen);
+
+    if (loraReadStatus == RADIOLIB_ERR_NONE) {
+      loraRxBuf[readLen] = '\0'; // Null terminate
+      int pct = -1;
+      if (sscanf(loraRxBuf, "DSP,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
+        Serial.printf("[LoRa RX from Main] Parsed DSP: %d\n", pct); // DEBUG
+        targetPct = shownPct = pct;
+        // No need to call drawMenu() or drawStart() here,
+        // targetPct/shownPct will be used when MENU state is active or entered.
+      }
+    } else {
+      Serial.print(F("[LoRa] readData failed, code "));
+      Serial.println(loraReadStatus);
+    }
+
+    // Important: restart listening for the next packet
+    int restartRxState = radio.startReceive();
+    if (restartRxState != RADIOLIB_ERR_NONE) {
+        Serial.print(F("[LoRa] Subsequent startReceive failed, code "));
+        Serial.println(restartRxState);
+    }
+    loraEnableInterrupt = true; // Re-enable interrupt processing
+  }
+  // --- End LoRa non-blocking receive ---
 
   switch (state) {
 
     // ─── START SCREEN ───
     case START: {
-      int r = digitalRead(UP_BTN);
-      if (r != lastUp) debUp = millis();
-      if (millis() - debUp > DEBOUNCE_MS && r != upState) {
-        upState = r;
+      int r_up = digitalRead(UP_BTN);
+      if (r_up != lastUp) debUp = millis();
+      if (millis() - debUp > DEBOUNCE_MS && r_up != upState) {
+        upState = r_up;
         if (upState == LOW) {
           registerTripleTap();
         }
       }
-      lastUp = r;
+      lastUp = r_up;
+
+      bool currentAnyPressed = (digitalRead(UP_BTN) == LOW || digitalRead(DOWN_BTN) == LOW);
+
+      if (currentAnyPressed != lastReportedAnyPressedState) {
+        sendBtn(currentAnyPressed ? 1 : 0);
+        lastReportedAnyPressedState = currentAnyPressed;
+      }
 
       if (millis() - lastStartUpdate >= START_UPDATE_MS) {
         drawStart();
         lastStartUpdate = millis();
       }
 
-      if (millis() - lastBtnTx >= BTN_TX_MS) {
-        lastBtnTx = millis();
-        bool anyPressed = (digitalRead(UP_BTN) == LOW || digitalRead(DOWN_BTN) == LOW);
-        sendBtn(anyPressed ? 1 : 0);
+      if (millis() - lastHeartbeatSent >= HEARTBEAT_INTERVAL) {
+        sendHeartbeat();
+        lastHeartbeatSent = millis();
       }
     } break;
 
@@ -142,7 +208,7 @@ void loop() {
 
       if (millis() - lastHB >= HB_MS) {
         lastHB = millis();
-        sendBtn(0);
+        sendHeartbeat();
       }
 
       handleButton(UP_BTN, upState, lastUp, pressUp, debUp, incPct);
@@ -217,15 +283,47 @@ void decPct() {
     targetPct -= 5;
     drawMenu();
     Serial.printf("DEC → %d\n", targetPct);
+    sendPct(targetPct);
   }
 }
 void sendBtn(uint8_t v) {
   sprintf(txBuf, "BTN,%d,%u", v, pktCnt++);
+  loraEnableInterrupt = false; // Disable RX interrupt during TX
   radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+  // After TX, ensure we go back to RX mode
+  int startRxState = radio.startReceive();
+  if (startRxState != RADIOLIB_ERR_NONE) {
+      Serial.print(F("[LoRa TX-BTN] startReceive failed, code "));
+      Serial.println(startRxState);
+  }
+  loraEnableInterrupt = true;
 }
 void sendPct(int p) {
   sprintf(txBuf, "VAL,%d,%u", p, pktCnt++);
+  loraEnableInterrupt = false; // Disable RX interrupt during TX
   radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+  // After TX, ensure we go back to RX mode
+  int startRxState = radio.startReceive();
+  if (startRxState != RADIOLIB_ERR_NONE) {
+      Serial.print(F("[LoRa TX-VAL] startReceive failed, code "));
+      Serial.println(startRxState);
+  }
+  loraEnableInterrupt = true;
+}
+
+// New function to send Heartbeat
+void sendHeartbeat() {
+  sprintf(txBuf, "HBT,%u", pktCnt++);
+  loraEnableInterrupt = false; // Disable RX interrupt during TX
+  radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+  // Serial.print("[LoRa TX-HBT] Sent: "); Serial.println(txBuf); // DEBUG
+  // After TX, ensure we go back to RX mode
+  int startRxState = radio.startReceive();
+  if (startRxState != RADIOLIB_ERR_NONE) {
+      Serial.print(F("[LoRa TX-HBT] startReceive failed, code "));
+      Serial.println(startRxState);
+  }
+  loraEnableInterrupt = true;
 }
 
 // ─────────────────────────────────────────

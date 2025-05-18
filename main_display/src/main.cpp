@@ -36,6 +36,12 @@ char loraRxBuf[64];
 unsigned long lastLoraMsgTime = 0;
 bool loraMsgActive = false;
 
+// --- Remote Connection Supervision ---
+unsigned long lastRemoteHeartbeatTime = 0;
+const unsigned long REMOTE_HEARTBEAT_TIMEOUT = 2000; // Milliseconds (e.g., 4x heartbeat interval of 500ms)
+bool remoteConnected = false;
+// --- End Remote Connection Supervision ---
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Setup.");
@@ -51,6 +57,10 @@ void setup() {
   display.begin();
   display.update(state.getDisplayedPercentage());
   
+  // Initialize remote connection status
+  lastRemoteHeartbeatTime = millis(); // Initialize to current time to avoid immediate timeout
+  remoteConnected = false; // Assume not connected until first heartbeat
+
   // Enable LoRa power (VEXT)
   #define VEXT 21
   pinMode(VEXT, OUTPUT);
@@ -86,6 +96,21 @@ void loop() {
 
   updateStartup(startPressed, stopPressed);
   handleWebUI();
+
+  // --- Remote Connection Check ---
+  if (remoteConnected && (millis() - lastRemoteHeartbeatTime > REMOTE_HEARTBEAT_TIMEOUT)) {
+    Serial.println("Remote connection lost! Initiating STOP sequence.");
+    state.setTargetPercentage(0); // Key stop action
+    // Optionally, add other direct stop actions here if needed, e.g., specific relay/servo commands
+    
+    display.updateText("NO REMOTE"); // Display connection lost message
+    // delay(1000); // Optional delay to ensure message is seen, but loop should continue
+    // display.update(state.getDisplayedPercentage()); // Update will show 0%
+
+    remoteConnected = false; // Update status
+    // No need to reset lastRemoteHeartbeatTime here, it will be updated when remote reconnects
+  }
+  // --- End Remote Connection Check ---
 
   // --- Mode Switching Logic ---
   // (Removed: old manualMode toggle logic. All switching is now handled by the profile/mode cycling logic below)
@@ -160,7 +185,14 @@ void loop() {
     // Screen updates - Now happens in both modes
     if (state.needsDisplayUpdate()) {
         state.updateDisplayStep();
-        display.update(state.getDisplayedPercentage());
+        int dispPct = state.getDisplayedPercentage();
+        display.update(dispPct);
+        // --- LoRa sync: send displayed percentage to remote ---
+        char loraTxBuf[16];
+        snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", dispPct);
+        Serial.print("[LoRa TX to Remote] "); // DEBUG
+        Serial.println(loraTxBuf);            // DEBUG
+        radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
     }
     /* OLD Logic - commented out
     // Screen updates based on mode
@@ -179,7 +211,11 @@ void loop() {
 
   // In MANUAL_CONTROL state, always update servo to match percentage (auto and manual mode)
   if (currentState == MANUAL_CONTROL) {
-    gasServo.write(calculateTargetAngle());
+    // Only adjust gas servo if remote is connected or if connection is not required for manual adjustments
+    // For safety, let's assume connection is required for any gas servo action not explicitly stop.
+    if (remoteConnected || state.getTargetPercentage() == 0) { 
+        gasServo.write(calculateTargetAngle());
+    }
   }
 
   // --- LoRa receive logic ---
@@ -188,6 +224,59 @@ void loop() {
     loraRxBuf[sizeof(loraRxBuf) - 1] = '\0'; // Ensure null-terminated
     Serial.print("[LoRa RX] ");
     Serial.println(loraRxBuf);
+
+    bool messageProcessed = false;
+
+    // --- LoRa sync: parse VAL,<pct> from remote ---
+    int pct = -1;
+    if (sscanf(loraRxBuf, "VAL,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
+      Serial.printf("[LoRa RX] Parsed VAL: %d\n", pct); // DEBUG
+      if (remoteConnected) { // Only accept VAL if remote is considered connected
+          state.setTargetPercentage(pct);
+      } else {
+          Serial.println("[LoRa RX] Ignored VAL, remote not connected.");
+      }
+      messageProcessed = true;
+    }
+
+    // --- LoRa: parse HBT (Heartbeat) from remote ---
+    // Format: HBT,pktCnt
+    if (!messageProcessed && strncmp(loraRxBuf, "HBT,", 4) == 0) {
+      Serial.println("[LoRa RX] Parsed HBT (Heartbeat)");
+      messageProcessed = true;
+    }
+
+    // --- LoRa: parse BTN (Button state) from remote ---
+    // Format: BTN,state,pktCnt (where state is 0 or 1)
+    int btnState = -1;
+    // Example parsing if you need the state: sscanf(loraRxBuf, "BTN,%d", &btnState)
+    if (!messageProcessed && strncmp(loraRxBuf, "BTN,", 4) == 0) {
+      Serial.printf("[LoRa RX] Parsed BTN: %s\n", loraRxBuf);
+      // Main display might not need to act on BTN state directly, 
+      // but receiving it confirms remote is active.
+      // If specific actions based on BTN state are needed, add them here.
+      messageProcessed = true;
+    }
+
+    if (messageProcessed) {
+      if (!remoteConnected) {
+        Serial.println("Remote (re)connected.");
+        // Clear "NO REMOTE" message by showing current mode/status
+        // This also ensures the display refreshes if it was showing NO REMOTE
+        if (manualMode) {
+            display.updateText(modeNames[3]); // MANUAL
+        } else {
+            display.updateText(modeNames[currentProfile]);
+        }
+        // A small delay might be good for the user to see the change, then update percentage.
+        // delay(500); // Optional short delay
+        // display.update(state.getDisplayedPercentage()); // Will be updated by normal flow
+      }
+      lastRemoteHeartbeatTime = millis();
+      remoteConnected = true;
+    } else {
+      Serial.println("[LoRa RX] Unknown message format from remote.");
+    }
   }
 
   delay(5);
