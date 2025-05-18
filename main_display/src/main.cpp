@@ -9,6 +9,7 @@
 #include "StateManager.h"
 #include "ButtonManager.h"
 #include "Settings.h"  // 🆕 Include for loadSettings()
+#include <RadioLib.h>
 
 DisplayManager display;
 ButtonManager upButton(7, &state, true);
@@ -22,8 +23,22 @@ StateManager& getGlobalStateManager() {
   return state;
 }
 
+// SX1262 LoRa pinout (same as remote)
+#define L_CS   8
+#define L_DIO1 14
+#define L_RST  12
+#define L_BUSY 13
+Module mod(L_CS, L_DIO1, L_RST, L_BUSY, SPI);
+SX1262 radio(&mod);
+
+// Buffer for received LoRa messages
+char loraRxBuf[64];
+unsigned long lastLoraMsgTime = 0;
+bool loraMsgActive = false;
+
 void setup() {
   Serial.begin(115200);
+  Serial.println("Starting Setup.");
   currentProfile = 0; // Always start in Auto 1
   manualMode = false;
   modeState = 0;
@@ -35,6 +50,25 @@ void setup() {
   setupWebUI();
   display.begin();
   display.update(state.getDisplayedPercentage());
+  
+  // Enable LoRa power (VEXT)
+  #define VEXT 21
+  pinMode(VEXT, OUTPUT);
+  digitalWrite(VEXT, LOW); // Enable LoRa power
+
+  // Use correct SPI pins for Heltec WiFi LoRa 32 (V3)
+  SPI.begin(9, 11, 10, 8); // SCK, MISO, MOSI, SS
+  int err = radio.begin(868.0);
+  if (err != RADIOLIB_ERR_NONE) {
+    Serial.print("LoRa init failed: ");
+    Serial.println(err);
+  } else {
+    radio.setOutputPower(14);
+    radio.setSpreadingFactor(8);
+    radio.setCodingRate(5);
+    radio.setBandwidth(125.0);
+    Serial.println("LoRa ready.");
+  }
 }
 
 void loop() {
@@ -146,6 +180,14 @@ void loop() {
   // In MANUAL_CONTROL state, always update servo to match percentage (auto and manual mode)
   if (currentState == MANUAL_CONTROL) {
     gasServo.write(calculateTargetAngle());
+  }
+
+  // --- LoRa receive logic ---
+  int loraStatus = radio.receive((uint8_t*)loraRxBuf, sizeof(loraRxBuf) - 1);
+  if (loraStatus == RADIOLIB_ERR_NONE) {
+    loraRxBuf[sizeof(loraRxBuf) - 1] = '\0'; // Ensure null-terminated
+    Serial.print("[LoRa RX] ");
+    Serial.println(loraRxBuf);
   }
 
   delay(5);

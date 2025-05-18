@@ -70,7 +70,7 @@ void registerTripleTap();
 // ─────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n[ Setup ]");
+  Serial.println("Starting Setup of Remote...");
 
   pinMode(UP_BTN, INPUT_PULLUP);
   pinMode(DOWN_BTN, INPUT_PULLUP);
