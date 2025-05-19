@@ -72,6 +72,24 @@ void IRAM_ATTR loraIsr() {
   }
 }
 
+// --- LoRa Sync State ---
+int lastSentPct = -1;
+bool waitingForAck = false;
+unsigned long lastValSendTime = 0;
+const unsigned long VAL_RESEND_INTERVAL = 200; // ms
+
+void sendLoraAck(int pct) {
+    sprintf(txBuf, "ACK,%d", pct);
+    loraEnableInterrupt = false;
+    radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+    int startRxState = radio.startReceive();
+    if (startRxState != RADIOLIB_ERR_NONE) {
+        Serial.print(F("[LoRa TX-ACK] startReceive failed, code "));
+        Serial.println(startRxState);
+    }
+    loraEnableInterrupt = true;
+}
+
 // ─── Prototypes ───
 void drawStart(), drawMenu();
 void sendBtn(uint8_t), sendPct(int);
@@ -140,12 +158,22 @@ void loop() {
     if (loraReadStatus == RADIOLIB_ERR_NONE) {
       loraRxBuf[readLen] = '\0'; // Null terminate
       int pct = -1;
+      bool messageProcessed = false;
       if (sscanf(loraRxBuf, "DSP,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
         Serial.printf("[LoRa RX from Main] Parsed DSP: %d\n", pct); // DEBUG
         targetPct = shownPct = pct;
-        // No need to call drawMenu() or drawStart() here,
-        // targetPct/shownPct will be used when MENU state is active or entered.
+        sendLoraAck(pct); // <--- Send ACK back to main
+        messageProcessed = true;
       }
+      int ackPct = -1;
+      if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
+        Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
+        if (waitingForAck && ackPct == lastSentPct) {
+            waitingForAck = false;
+        }
+        messageProcessed = true;
+      }
+      // ...existing code for other messages...
     } else {
       Serial.print(F("[LoRa] readData failed, code "));
       Serial.println(loraReadStatus);
@@ -160,6 +188,29 @@ void loop() {
     loraEnableInterrupt = true; // Re-enable interrupt processing
   }
   // --- End LoRa non-blocking receive ---
+
+  // --- VAL,<pct> sync logic ---
+  static int lastSentPctLocal = -1;
+  if (state == MENU) {
+    if ((!waitingForAck && targetPct != lastSentPctLocal) || (waitingForAck && millis() - lastValSendTime > VAL_RESEND_INTERVAL)) {
+      // Send new value or resend if waiting for ACK timed out
+      sprintf(txBuf, "VAL,%d", targetPct);
+      loraEnableInterrupt = false;
+      radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+      int startRxState = radio.startReceive();
+      if (startRxState != RADIOLIB_ERR_NONE) {
+          Serial.print(F("[LoRa TX-VAL] startReceive failed, code "));
+          Serial.println(startRxState);
+      }
+      loraEnableInterrupt = true;
+      lastSentPct = targetPct;
+      lastSentPctLocal = targetPct;
+      waitingForAck = true;
+      lastValSendTime = millis();
+    }
+  } else {
+    waitingForAck = false; // Not in menu, clear waiting
+  }
 
   switch (state) {
 

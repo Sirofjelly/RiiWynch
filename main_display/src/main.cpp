@@ -42,6 +42,21 @@ const unsigned long REMOTE_HEARTBEAT_TIMEOUT = 2000; // Milliseconds (e.g., 4x h
 bool remoteConnected = false;
 // --- End Remote Connection Supervision ---
 
+// --- LoRa Sync State ---
+int lastSentDisplayPct = -1;
+bool waitingForAck = false;
+unsigned long lastLoraSendTime = 0;
+const unsigned long LORA_RESEND_INTERVAL = 200; // ms
+
+// --- LoRa ACK helper ---
+void sendLoraAck(int pct) {
+    char ackBuf[16];
+    snprintf(ackBuf, sizeof(ackBuf), "ACK,%d", pct);
+    radio.transmit((uint8_t*)ackBuf, strlen(ackBuf));
+    Serial.print("[LoRa TX] ");
+    Serial.println(ackBuf);
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Setup.");
@@ -187,12 +202,25 @@ void loop() {
         state.updateDisplayStep();
         int dispPct = state.getDisplayedPercentage();
         display.update(dispPct);
-        // --- LoRa sync: send displayed percentage to remote ---
-        char loraTxBuf[16];
-        snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", dispPct);
-        Serial.print("[LoRa TX to Remote] "); // DEBUG
-        Serial.println(loraTxBuf);            // DEBUG
-        radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
+        // --- LoRa sync: send displayed percentage to remote, wait for ACK ---
+        if (!waitingForAck || dispPct != lastSentDisplayPct) {
+            char loraTxBuf[16];
+            snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", dispPct);
+            Serial.print("[LoRa TX to Remote] ");
+            Serial.println(loraTxBuf);
+            radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
+            lastSentDisplayPct = dispPct;
+            waitingForAck = true;
+            lastLoraSendTime = millis();
+        } else if (waitingForAck && millis() - lastLoraSendTime > LORA_RESEND_INTERVAL) {
+            // Resend if no ACK
+            char loraTxBuf[16];
+            snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", lastSentDisplayPct);
+            Serial.print("[LoRa TX to Remote - RESEND] ");
+            Serial.println(loraTxBuf);
+            radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
+            lastLoraSendTime = millis();
+        }
     }
     /* OLD Logic - commented out
     // Screen updates based on mode
@@ -233,44 +261,44 @@ void loop() {
       Serial.printf("[LoRa RX] Parsed VAL: %d\n", pct); // DEBUG
       if (remoteConnected) { // Only accept VAL if remote is considered connected
           state.setTargetPercentage(pct);
+          sendLoraAck(pct); // <--- Send ACK back to remote
       } else {
           Serial.println("[LoRa RX] Ignored VAL, remote not connected.");
       }
       messageProcessed = true;
     }
 
+    // --- LoRa: parse ACK,<pct> from remote ---
+    int ackPct = -1;
+    if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
+        Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
+        if (waitingForAck && ackPct == lastSentDisplayPct) {
+            waitingForAck = false;
+        }
+        messageProcessed = true;
+    }
+
     // --- LoRa: parse HBT (Heartbeat) from remote ---
-    // Format: HBT,pktCnt
     if (!messageProcessed && strncmp(loraRxBuf, "HBT,", 4) == 0) {
       Serial.println("[LoRa RX] Parsed HBT (Heartbeat)");
       messageProcessed = true;
     }
 
     // --- LoRa: parse BTN (Button state) from remote ---
-    // Format: BTN,state,pktCnt (where state is 0 or 1)
     int btnState = -1;
-    // Example parsing if you need the state: sscanf(loraRxBuf, "BTN,%d", &btnState)
     if (!messageProcessed && strncmp(loraRxBuf, "BTN,", 4) == 0) {
       Serial.printf("[LoRa RX] Parsed BTN: %s\n", loraRxBuf);
-      // Main display might not need to act on BTN state directly, 
-      // but receiving it confirms remote is active.
-      // If specific actions based on BTN state are needed, add them here.
       messageProcessed = true;
     }
 
     if (messageProcessed) {
       if (!remoteConnected) {
         Serial.println("Remote (re)connected.");
-        // Clear "NO REMOTE" message by showing current mode/status
-        // This also ensures the display refreshes if it was showing NO REMOTE
         if (manualMode) {
             display.updateText(modeNames[3]); // MANUAL
         } else {
             display.updateText(modeNames[currentProfile]);
         }
-        // A small delay might be good for the user to see the change, then update percentage.
-        // delay(500); // Optional short delay
-        // display.update(state.getDisplayedPercentage()); // Will be updated by normal flow
       }
       lastRemoteHeartbeatTime = millis();
       remoteConnected = true;
