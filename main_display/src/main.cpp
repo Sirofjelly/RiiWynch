@@ -86,7 +86,7 @@ void IRAM_ATTR onLoRaReceive() {
 
 // --- Remote Connection Supervision ---
 unsigned long lastRemoteHeartbeatTime = 0;
-const unsigned long REMOTE_HEARTBEAT_TIMEOUT = 2000; // Milliseconds (e.g., 4x heartbeat interval of 500ms)
+const unsigned long REMOTE_HEARTBEAT_TIMEOUT = 2000;
 bool remoteConnected = false;
 // --- End Remote Connection Supervision ---
 
@@ -202,31 +202,21 @@ void loop() {
   }
   PROFILE_SECTION("Remote connection check");
 
-  // --- Mode Switching Logic ---
-  // (Removed: old manualMode toggle logic. All switching is now handled by the profile/mode cycling logic below)
-  // --- End Mode Switching Logic ---
-
   // Profile/mode switching logic
   static bool profileSwitchComboActive = false;
   static unsigned long profileSwitchDebounceTime = 0;
-  static bool showingModeText = false;
-  static unsigned long modeTextStartTime = 0;
   const unsigned long PROFILE_SWITCH_DEBOUNCE = 500; // ms debounce after change
-  const unsigned long MODE_TEXT_DISPLAY_TIME = 1000; // ms to show mode text
 
   bool upHeld = upButton.isPressed();
   bool downHeld = downButton.isPressed();
   bool currentCombo = upHeld && downHeld && stopPressed;
 
-  // Handle mode text display timeout (non-blocking replacement for delay(1000))
-  if (showingModeText && (millis() - modeTextStartTime >= MODE_TEXT_DISPLAY_TIME)) {
-      showingModeText = false;
-      display.update(state.getDisplayedPercentage());
-  }
+  // Update mode display (non-blocking timeout handling)
+  display.updateModeDisplay();
 
   // Fixed logic to ensure "Smooth" profile is not skipped
   // Ensure button logic synchronizes with Web UI profile changes
-  if (currentCombo && !profileSwitchComboActive && !showingModeText && 
+  if (currentCombo && !profileSwitchComboActive && !display.isModeDisplayActive() && 
       (millis() - profileSwitchDebounceTime > PROFILE_SWITCH_DEBOUNCE)) {
       modeState = (currentProfile + 1) % 4; // Synchronize modeState with currentProfile
       manualMode = (modeState == 3);
@@ -236,10 +226,8 @@ void loop() {
       profileSwitchComboActive = true;
       profileSwitchDebounceTime = millis();
 
-      // Display mode change confirmation (non-blocking)
-      display.updateText(modeNames[modeState]);
-      showingModeText = true;
-      modeTextStartTime = millis();
+      // Display mode change confirmation using new protected display method
+      display.startModeDisplay(modeNames[modeState], 2000); // Show for 2 seconds
       
       if (manualMode) {
           state.setTargetPercentage(5);
@@ -402,9 +390,9 @@ void loop() {
         if (!remoteConnected) {
           Serial.println("Remote (re)connected.");
           if (manualMode) {
-              display.updateText(modeNames[3]); // MANUAL
+              display.startModeDisplay(modeNames[3], 1500); // MANUAL - show for 1.5 seconds
           } else {
-              display.updateText(modeNames[currentProfile]);
+              display.startModeDisplay(modeNames[currentProfile], 1500); // Show current mode for 1.5 seconds
           }
         }
         lastRemoteHeartbeatTime = millis();

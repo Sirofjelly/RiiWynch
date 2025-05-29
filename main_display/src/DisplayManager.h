@@ -10,6 +10,11 @@ public:
   void clear();                       // ✅ Public clear screen
   void init();
   void blinkStopText(bool show);
+  
+  // Mode display protection methods
+  void startModeDisplay(const char* modeText, unsigned long displayDuration = 1000);
+  void updateModeDisplay(); // Call this in main loop to handle timeout
+  bool isModeDisplayActive(); // Check if mode display is currently active
 
 private:
   void drawFrame();
@@ -17,4 +22,10 @@ private:
   void drawThickerRoundedFrame();
   void drawSlimRoundedBar(int percentage);
   U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2;
+  
+  // Mode display protection state
+  bool _modeDisplayActive;
+  unsigned long _modeDisplayStartTime;
+  unsigned long _modeDisplayDuration;
+  char _modeDisplayText[16]; // Store the mode text
 };

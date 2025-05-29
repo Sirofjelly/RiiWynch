@@ -280,10 +280,10 @@ void handleToggleManual() {
     if (manualMode) {
       state.setTargetPercentage(5);
       currentState = IDLE; // Reset state machine to prevent ramping
-      display.updateText(modeNames[3]);
+      display.startModeDisplay(modeNames[3], 1500);
     } else {
       currentState = IDLE;
-      display.updateText(modeNames[currentProfile]);
+      display.startModeDisplay(modeNames[currentProfile], 1500);
     }
   }
   server.send(200, "text/plain", "OK");
@@ -300,7 +300,7 @@ void handleSwitchProfile() {
     loadSettingsForProfile(currentProfile);
 
     Serial.printf("🔄 Switching to profile %d\n", currentProfile + 1);
-    display.updateText(modeNames[currentProfile]);
+    display.startModeDisplay(modeNames[currentProfile], 1500);
 
     // Prepare JSON response with all loaded settings
     String jsonResponse = "{";
