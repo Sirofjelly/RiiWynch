@@ -3,6 +3,8 @@
 #include <SPI.h>
 #include <U8g2lib.h>
 #include <RadioLib.h>
+#include <FreeRTOS.h>
+#include <semphr.h>
 
 // ─── Display ───
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(
@@ -15,6 +17,12 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(
 #define L_BUSY 13
 Module  mod(L_CS, L_DIO1, L_RST, L_BUSY, SPI);
 SX1262  radio(&mod);
+
+// ─── FreeRTOS Task Handles ───
+TaskHandle_t heartbeatTaskHandle = NULL;
+
+// ─── Mutexes for thread-safe LoRa access ───
+SemaphoreHandle_t loraMutex = NULL;
 
 // ─── Pins ───
 #define UP_BTN    7
@@ -79,15 +87,18 @@ unsigned long lastValSendTime = 0;
 const unsigned long VAL_RESEND_INTERVAL = 200; // ms
 
 void sendLoraAck(int pct) {
-    sprintf(txBuf, "ACK,%d", pct);
-    loraEnableInterrupt = false;
-    radio.transmit((uint8_t *)txBuf, strlen(txBuf));
-    int startRxState = radio.startReceive();
-    if (startRxState != RADIOLIB_ERR_NONE) {
-        Serial.print(F("[LoRa TX-ACK] startReceive failed, code "));
-        Serial.println(startRxState);
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        sprintf(txBuf, "ACK,%d", pct);
+        loraEnableInterrupt = false;
+        radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+        int startRxState = radio.startReceive();
+        if (startRxState != RADIOLIB_ERR_NONE) {
+            Serial.print(F("[LoRa TX-ACK] startReceive failed, code "));
+            Serial.println(startRxState);
+        }
+        loraEnableInterrupt = true;
+        xSemaphoreGive(loraMutex);
     }
-    loraEnableInterrupt = true;
 }
 
 // ─── Prototypes ───
@@ -98,6 +109,50 @@ uint16_t readBattery();
 void handleButton(int, int&, int&, unsigned long&, unsigned long&, void(*)());
 void registerTripleTap();
 void sendHeartbeat();
+
+// ─── Heartbeat Task Function ───
+void heartbeatTask(void *parameter) {
+  TickType_t lastWakeTime = xTaskGetTickCount();
+  const TickType_t heartbeatPeriod = pdMS_TO_TICKS(500); // 500ms interval
+  
+  for (;;) {
+    // Wait for the next heartbeat time
+    vTaskDelayUntil(&lastWakeTime, heartbeatPeriod);
+    
+    // Send heartbeat in both START and MENU states to maintain connection
+    if (state == START || state == MENU) {
+      // Take mutex before using LoRa radio
+      if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        char hbtBuf[16];
+        sprintf(hbtBuf, "HBT,%u", pktCnt++);
+        
+        // Temporarily disable interrupt during transmission
+        loraEnableInterrupt = false;
+        
+        int txResult = radio.transmit((uint8_t *)hbtBuf, strlen(hbtBuf));
+        if (txResult == RADIOLIB_ERR_NONE) {
+          // Serial.printf("[HBT Task] Sent: %s\n", hbtBuf); // DEBUG
+        } else {
+          Serial.printf("[HBT Task] TX failed: %d\n", txResult);
+        }
+        
+        // Restart RX mode
+        int startRxState = radio.startReceive();
+        if (startRxState != RADIOLIB_ERR_NONE) {
+          Serial.printf("[HBT Task] startReceive failed: %d\n", startRxState);
+        }
+        
+        // Re-enable interrupt
+        loraEnableInterrupt = true;
+        
+        // Release mutex
+        xSemaphoreGive(loraMutex);
+      } else {
+        Serial.println("[HBT Task] Failed to get LoRa mutex");
+      }
+    }
+  }
+}
 
 // ─────────────────────────────────────────
 //                 SETUP
@@ -138,6 +193,29 @@ void setup() {
       Serial.println("LoRa receiver started.");
     }
   }
+
+  // Create mutex for LoRa access
+  loraMutex = xSemaphoreCreateMutex();
+  if (loraMutex == NULL) {
+    Serial.println("Failed to create LoRa mutex!");
+  }
+
+  // Create heartbeat task on core 0 (core 1 is used by Arduino loop by default)
+  xTaskCreatePinnedToCore(
+    heartbeatTask,       // Task function
+    "HeartbeatTask",     // Task name
+    2048,                // Stack size (bytes)
+    NULL,                // Task parameter
+    2,                   // Priority (higher than default 1)
+    &heartbeatTaskHandle, // Task handle
+    0                    // Core ID (0 or 1)
+  );
+  
+  if (heartbeatTaskHandle == NULL) {
+    Serial.println("Failed to create heartbeat task!");
+  } else {
+    Serial.println("Heartbeat task created successfully on core 0");
+  }
 }
 
 // ─────────────────────────────────────────
@@ -146,46 +224,52 @@ void setup() {
 void loop() {
   // --- LoRa non-blocking receive: sync from main ---
   if (loraReceivedFlag) {
-    loraEnableInterrupt = false; // Disable interrupt processing temporarily
-    loraReceivedFlag = false;
+    // Take mutex before accessing LoRa radio
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      loraEnableInterrupt = false; // Disable interrupt processing temporarily
+      loraReceivedFlag = false;
 
-    char loraRxBuf[32]; // Buffer for incoming message
-    int packetLength = radio.getPacketLength();
-    size_t readLen = (packetLength < (sizeof(loraRxBuf) - 1)) ? packetLength : (sizeof(loraRxBuf) - 1);
+      char loraRxBuf[32]; // Buffer for incoming message
+      int packetLength = radio.getPacketLength();
+      size_t readLen = (packetLength < (sizeof(loraRxBuf) - 1)) ? packetLength : (sizeof(loraRxBuf) - 1);
 
-    int loraReadStatus = radio.readData((uint8_t*)loraRxBuf, readLen);
+      int loraReadStatus = radio.readData((uint8_t*)loraRxBuf, readLen);
 
-    if (loraReadStatus == RADIOLIB_ERR_NONE) {
-      loraRxBuf[readLen] = '\0'; // Null terminate
-      int pct = -1;
-      bool messageProcessed = false;
-      if (sscanf(loraRxBuf, "DSP,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
-        Serial.printf("[LoRa RX from Main] Parsed DSP: %d\n", pct); // DEBUG
-        targetPct = shownPct = pct;
-        sendLoraAck(pct); // <--- Send ACK back to main
-        messageProcessed = true;
-      }
-      int ackPct = -1;
-      if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
-        Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
-        if (waitingForAck && ackPct == lastSentPct) {
-            waitingForAck = false;
+      if (loraReadStatus == RADIOLIB_ERR_NONE) {
+        loraRxBuf[readLen] = '\0'; // Null terminate
+        int pct = -1;
+        bool messageProcessed = false;
+        if (sscanf(loraRxBuf, "DSP,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
+          Serial.printf("[LoRa RX from Main] Parsed DSP: %d\n", pct); // DEBUG
+          targetPct = shownPct = pct;
+          sendLoraAck(pct); // <--- Send ACK back to main
+          messageProcessed = true;
         }
-        messageProcessed = true;
+        int ackPct = -1;
+        if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
+          Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
+          if (waitingForAck && ackPct == lastSentPct) {
+              waitingForAck = false;
+          }
+          messageProcessed = true;
+        }
+        // ...existing code for other messages...
+      } else {
+        Serial.print(F("[LoRa] readData failed, code "));
+        Serial.println(loraReadStatus);
       }
-      // ...existing code for other messages...
-    } else {
-      Serial.print(F("[LoRa] readData failed, code "));
-      Serial.println(loraReadStatus);
-    }
 
-    // Important: restart listening for the next packet
-    int restartRxState = radio.startReceive();
-    if (restartRxState != RADIOLIB_ERR_NONE) {
-        Serial.print(F("[LoRa] Subsequent startReceive failed, code "));
-        Serial.println(restartRxState);
+      // Important: restart listening for the next packet
+      int restartRxState = radio.startReceive();
+      if (restartRxState != RADIOLIB_ERR_NONE) {
+          Serial.print(F("[LoRa] Subsequent startReceive failed, code "));
+          Serial.println(restartRxState);
+      }
+      loraEnableInterrupt = true; // Re-enable interrupt processing
+      
+      // Release mutex
+      xSemaphoreGive(loraMutex);
     }
-    loraEnableInterrupt = true; // Re-enable interrupt processing
   }
   // --- End LoRa non-blocking receive ---
 
@@ -193,20 +277,26 @@ void loop() {
   static int lastSentPctLocal = -1;
   if (state == MENU) {
     if ((!waitingForAck && targetPct != lastSentPctLocal) || (waitingForAck && millis() - lastValSendTime > VAL_RESEND_INTERVAL)) {
-      // Send new value or resend if waiting for ACK timed out
-      sprintf(txBuf, "VAL,%d", targetPct);
-      loraEnableInterrupt = false;
-      radio.transmit((uint8_t *)txBuf, strlen(txBuf));
-      int startRxState = radio.startReceive();
-      if (startRxState != RADIOLIB_ERR_NONE) {
-          Serial.print(F("[LoRa TX-VAL] startReceive failed, code "));
-          Serial.println(startRxState);
+      // Take mutex before LoRa transmission
+      if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        // Send new value or resend if waiting for ACK timed out
+        sprintf(txBuf, "VAL,%d,%u", targetPct, pktCnt++);
+        loraEnableInterrupt = false;
+        radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+        int startRxState = radio.startReceive();
+        if (startRxState != RADIOLIB_ERR_NONE) {
+            Serial.print(F("[LoRa TX-VAL] startReceive failed, code "));
+            Serial.println(startRxState);
+        }
+        loraEnableInterrupt = true;
+        lastSentPct = targetPct;
+        lastSentPctLocal = targetPct;
+        waitingForAck = true;
+        lastValSendTime = millis();
+        
+        // Release mutex
+        xSemaphoreGive(loraMutex);
       }
-      loraEnableInterrupt = true;
-      lastSentPct = targetPct;
-      lastSentPctLocal = targetPct;
-      waitingForAck = true;
-      lastValSendTime = millis();
     }
   } else {
     waitingForAck = false; // Not in menu, clear waiting
@@ -238,10 +328,7 @@ void loop() {
         lastStartUpdate = millis();
       }
 
-      if (millis() - lastHeartbeatSent >= HEARTBEAT_INTERVAL) {
-        sendHeartbeat();
-        lastHeartbeatSent = millis();
-      }
+      // Heartbeat is now handled by dedicated task
     } break;
 
     // ─── MENU SCREEN ───
@@ -257,10 +344,7 @@ void loop() {
         break;
       }
 
-      if (millis() - lastHB >= HB_MS) {
-        lastHB = millis();
-        sendHeartbeat();
-      }
+      // Heartbeat is now handled by dedicated task
 
       handleButton(UP_BTN, upState, lastUp, pressUp, debUp, incPct);
       handleButton(DOWN_BTN, downState, lastDown, pressDown, debDown, decPct);
@@ -338,43 +422,52 @@ void decPct() {
   }
 }
 void sendBtn(uint8_t v) {
-  sprintf(txBuf, "BTN,%d,%u", v, pktCnt++);
-  loraEnableInterrupt = false; // Disable RX interrupt during TX
-  radio.transmit((uint8_t *)txBuf, strlen(txBuf));
-  // After TX, ensure we go back to RX mode
-  int startRxState = radio.startReceive();
-  if (startRxState != RADIOLIB_ERR_NONE) {
-      Serial.print(F("[LoRa TX-BTN] startReceive failed, code "));
-      Serial.println(startRxState);
+  if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    sprintf(txBuf, "BTN,%d,%u", v, pktCnt++);
+    loraEnableInterrupt = false; // Disable RX interrupt during TX
+    radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+    // After TX, ensure we go back to RX mode
+    int startRxState = radio.startReceive();
+    if (startRxState != RADIOLIB_ERR_NONE) {
+        Serial.print(F("[LoRa TX-BTN] startReceive failed, code "));
+        Serial.println(startRxState);
+    }
+    loraEnableInterrupt = true;
+    xSemaphoreGive(loraMutex);
   }
-  loraEnableInterrupt = true;
 }
 void sendPct(int p) {
-  sprintf(txBuf, "VAL,%d,%u", p, pktCnt++);
-  loraEnableInterrupt = false; // Disable RX interrupt during TX
-  radio.transmit((uint8_t *)txBuf, strlen(txBuf));
-  // After TX, ensure we go back to RX mode
-  int startRxState = radio.startReceive();
-  if (startRxState != RADIOLIB_ERR_NONE) {
-      Serial.print(F("[LoRa TX-VAL] startReceive failed, code "));
-      Serial.println(startRxState);
+  if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    sprintf(txBuf, "VAL,%d,%u", p, pktCnt++);
+    loraEnableInterrupt = false; // Disable RX interrupt during TX
+    radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+    // After TX, ensure we go back to RX mode
+    int startRxState = radio.startReceive();
+    if (startRxState != RADIOLIB_ERR_NONE) {
+        Serial.print(F("[LoRa TX-VAL] startReceive failed, code "));
+        Serial.println(startRxState);
+    }
+    loraEnableInterrupt = true;
+    xSemaphoreGive(loraMutex);
   }
-  loraEnableInterrupt = true;
 }
 
-// New function to send Heartbeat
+// New function to send Heartbeat (kept for compatibility but now unused)
 void sendHeartbeat() {
-  sprintf(txBuf, "HBT,%u", pktCnt++);
-  loraEnableInterrupt = false; // Disable RX interrupt during TX
-  radio.transmit((uint8_t *)txBuf, strlen(txBuf));
-  // Serial.print("[LoRa TX-HBT] Sent: "); Serial.println(txBuf); // DEBUG
-  // After TX, ensure we go back to RX mode
-  int startRxState = radio.startReceive();
-  if (startRxState != RADIOLIB_ERR_NONE) {
-      Serial.print(F("[LoRa TX-HBT] startReceive failed, code "));
-      Serial.println(startRxState);
+  if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    sprintf(txBuf, "HBT,%u", pktCnt++);
+    loraEnableInterrupt = false; // Disable RX interrupt during TX
+    radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+    // Serial.print("[LoRa TX-HBT] Sent: "); Serial.println(txBuf); // DEBUG
+    // After TX, ensure we go back to RX mode
+    int startRxState = radio.startReceive();
+    if (startRxState != RADIOLIB_ERR_NONE) {
+        Serial.print(F("[LoRa TX-HBT] startReceive failed, code "));
+        Serial.println(startRxState);
+    }
+    loraEnableInterrupt = true;
+    xSemaphoreGive(loraMutex);
   }
-  loraEnableInterrupt = true;
 }
 
 // ─────────────────────────────────────────

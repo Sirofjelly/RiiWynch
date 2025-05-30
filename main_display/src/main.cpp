@@ -10,6 +10,8 @@
 #include "ButtonManager.h"
 #include "Settings.h"  // 🆕 Include for loadSettings()
 #include <RadioLib.h>
+#include <FreeRTOS.h>
+#include <semphr.h>
 
 // === PROFILING SYSTEM ===
 #define ENABLE_PROFILING 1  // Set to 0 to disable profiling
@@ -88,7 +90,13 @@ void IRAM_ATTR onLoRaReceive() {
 unsigned long lastRemoteHeartbeatTime = 0;
 const unsigned long REMOTE_HEARTBEAT_TIMEOUT = 2000;
 bool remoteConnected = false;
-// --- End Remote Connection Supervision ---
+
+// --- FreeRTOS Task Handles ---
+TaskHandle_t heartbeatMonitorTaskHandle = NULL;
+
+// --- Mutexes for thread-safe access ---
+SemaphoreHandle_t heartbeatMutex = NULL;
+SemaphoreHandle_t loraMutex = NULL;
 
 // --- LoRa Sync State ---
 int lastSentDisplayPct = -1;
@@ -98,20 +106,57 @@ const unsigned long LORA_RESEND_INTERVAL = 200; // ms
 
 // --- LoRa ACK helper ---
 void sendLoraAck(int pct) {
-    char ackBuf[16];
-    snprintf(ackBuf, sizeof(ackBuf), "ACK,%d", pct);
-    
-    // Transmit the ACK
-    int txResult = radio.transmit((uint8_t*)ackBuf, strlen(ackBuf));
-    if (txResult == RADIOLIB_ERR_NONE) {
-        Serial.print("[LoRa TX] ");
-        Serial.println(ackBuf);
-    } else {
-        Serial.printf("[LoRa TX] Error: %d\n", txResult);
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        char ackBuf[16];
+        snprintf(ackBuf, sizeof(ackBuf), "ACK,%d", pct);
+        
+        // Transmit the ACK
+        int txResult = radio.transmit((uint8_t*)ackBuf, strlen(ackBuf));
+        if (txResult == RADIOLIB_ERR_NONE) {
+            Serial.print("[LoRa TX] ");
+            Serial.println(ackBuf);
+        } else {
+            Serial.printf("[LoRa TX] Error: %d\n", txResult);
+        }
+        
+        // Restart receive mode after transmission
+        radio.startReceive();
+        
+        xSemaphoreGive(loraMutex);
     }
+}
+
+// --- Heartbeat Monitoring Task Function ---
+void heartbeatMonitorTask(void *parameter) {
+  TickType_t lastWakeTime = xTaskGetTickCount();
+  const TickType_t checkPeriod = pdMS_TO_TICKS(100); // Check every 100ms for responsiveness
+  
+  for (;;) {
+    // Wait for the next check time
+    vTaskDelayUntil(&lastWakeTime, checkPeriod);
     
-    // Restart receive mode after transmission
-    radio.startReceive();
+    // Take mutex before accessing shared heartbeat variables
+    if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      // Check for heartbeat timeout
+      if (remoteConnected && (millis() - lastRemoteHeartbeatTime > REMOTE_HEARTBEAT_TIMEOUT)) {
+        Serial.println("[HBT Monitor] Remote connection lost! Initiating STOP sequence.");
+        
+        // Key safety action - stop the system immediately
+        state.setTargetPercentage(0);
+        
+        // Update display to show connection lost
+        display.updateText("NO REMOTE");
+        
+        // Update connection status
+        remoteConnected = false;
+        
+        Serial.println("[HBT Monitor] Emergency stop executed");
+      }
+      
+      // Release mutex
+      xSemaphoreGive(heartbeatMutex);
+    }
+  }
 }
 
 void setup() {
@@ -162,6 +207,35 @@ void setup() {
       Serial.println(rxErr);
     }
   }
+
+  // Create mutex for heartbeat monitoring
+  heartbeatMutex = xSemaphoreCreateMutex();
+  if (heartbeatMutex == NULL) {
+    Serial.println("Failed to create heartbeat mutex!");
+  }
+
+  // Create mutex for LoRa communication
+  loraMutex = xSemaphoreCreateMutex();
+  if (loraMutex == NULL) {
+    Serial.println("Failed to create LoRa mutex!");
+  }
+
+  // Create heartbeat monitoring task on core 0 (core 1 is used by Arduino loop by default)
+  xTaskCreatePinnedToCore(
+    heartbeatMonitorTask,        // Task function
+    "HeartbeatMonitor",          // Task name
+    2048,                        // Stack size (bytes)
+    NULL,                        // Task parameter
+    3,                           // Priority (higher than default for safety)
+    &heartbeatMonitorTaskHandle, // Task handle
+    0                            // Core ID (0 or 1)
+  );
+  
+  if (heartbeatMonitorTaskHandle == NULL) {
+    Serial.println("Failed to create heartbeat monitor task!");
+  } else {
+    Serial.println("Heartbeat monitor task created successfully on core 0");
+  }
 }
 
 void loop() {
@@ -187,19 +261,7 @@ void loop() {
   handleWebUI();
   PROFILE_SECTION("WebUI handling");
 
-  // --- Remote Connection Check ---
-  if (remoteConnected && (millis() - lastRemoteHeartbeatTime > REMOTE_HEARTBEAT_TIMEOUT)) {
-    Serial.println("Remote connection lost! Initiating STOP sequence.");
-    state.setTargetPercentage(0); // Key stop action
-    // Optionally, add other direct stop actions here if needed, e.g., specific relay/servo commands
-    
-    display.updateText("NO REMOTE"); // Display connection lost message
-    // delay(1000); // Optional delay to ensure message is seen, but loop should continue
-    // display.update(state.getDisplayedPercentage()); // Update will show 0%
-
-    remoteConnected = false; // Update status
-    // No need to reset lastRemoteHeartbeatTime here, it will be updated when remote reconnects
-  }
+  // Heartbeat monitoring is now handled by dedicated task
   PROFILE_SECTION("Remote connection check");
 
   // Profile/mode switching logic
@@ -280,34 +342,40 @@ void loop() {
         display.update(dispPct);
         // --- LoRa sync: send displayed percentage to remote, wait for ACK ---
         if (!waitingForAck || dispPct != lastSentDisplayPct) {
-            char loraTxBuf[16];
-            snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", dispPct);
-            Serial.print("[LoRa TX to Remote] ");
-            Serial.println(loraTxBuf);
-            int txResult = radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
-            if (txResult == RADIOLIB_ERR_NONE) {
-                lastSentDisplayPct = dispPct;
-                waitingForAck = true;
-                lastLoraSendTime = millis();
-            } else {
-                Serial.printf("[LoRa TX] Error: %d\n", txResult);
+            if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                char loraTxBuf[16];
+                snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", dispPct);
+                Serial.print("[LoRa TX to Remote] ");
+                Serial.println(loraTxBuf);
+                int txResult = radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
+                if (txResult == RADIOLIB_ERR_NONE) {
+                    lastSentDisplayPct = dispPct;
+                    waitingForAck = true;
+                    lastLoraSendTime = millis();
+                } else {
+                    Serial.printf("[LoRa TX] Error: %d\n", txResult);
+                }
+                // Restart receive mode after transmission
+                radio.startReceive();
+                xSemaphoreGive(loraMutex);
             }
-            // Restart receive mode after transmission
-            radio.startReceive();
         } else if (waitingForAck && millis() - lastLoraSendTime > LORA_RESEND_INTERVAL) {
-            // Resend if no ACK
-            char loraTxBuf[16];
-            snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", lastSentDisplayPct);
-            Serial.print("[LoRa TX to Remote - RESEND] ");
-            Serial.println(loraTxBuf);
-            int txResult = radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
-            if (txResult == RADIOLIB_ERR_NONE) {
-                lastLoraSendTime = millis();
-            } else {
-                Serial.printf("[LoRa TX RESEND] Error: %d\n", txResult);
+            if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                // Resend if no ACK
+                char loraTxBuf[16];
+                snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", lastSentDisplayPct);
+                Serial.print("[LoRa TX to Remote - RESEND] ");
+                Serial.println(loraTxBuf);
+                int txResult = radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
+                if (txResult == RADIOLIB_ERR_NONE) {
+                    lastLoraSendTime = millis();
+                } else {
+                    Serial.printf("[LoRa TX RESEND] Error: %d\n", txResult);
+                }
+                // Restart receive mode after transmission
+                radio.startReceive();
+                xSemaphoreGive(loraMutex);
             }
-            // Restart receive mode after transmission
-            radio.startReceive();
         }
     }
     /* OLD Logic - commented out
@@ -338,76 +406,94 @@ void loop() {
 
   // --- LoRa receive logic (INTERRUPT-BASED NON-BLOCKING) ---
   if (loraMessageReady) {
-    loraMessageReady = false; // Clear the flag
-    
-    // Read the received data - this is fast, no blocking
-    int loraStatus = radio.readData((uint8_t*)loraRxBuf, sizeof(loraRxBuf) - 1);
-    
-    if (loraStatus == RADIOLIB_ERR_NONE) {
-      loraRxBuf[sizeof(loraRxBuf) - 1] = '\0'; // Ensure null-terminated
-      Serial.print("[LoRa RX] ");
-      Serial.println(loraRxBuf);
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      loraMessageReady = false; // Clear the flag
+      
+      // Read the received data - this is fast, no blocking
+      int loraStatus = radio.readData((uint8_t*)loraRxBuf, sizeof(loraRxBuf) - 1);
+      
+      if (loraStatus == RADIOLIB_ERR_NONE) {
+        loraRxBuf[sizeof(loraRxBuf) - 1] = '\0'; // Ensure null-terminated
+        Serial.print("[LoRa RX] ");
+        Serial.println(loraRxBuf);
 
-      bool messageProcessed = false;
+        bool messageProcessed = false;
 
-      // --- LoRa sync: parse VAL,<pct> from remote ---
-      int pct = -1;
-      if (sscanf(loraRxBuf, "VAL,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
-        Serial.printf("[LoRa RX] Parsed VAL: %d\n", pct); // DEBUG
-        if (remoteConnected) { // Only accept VAL if remote is considered connected
-            state.setTargetPercentage(pct);
-            sendLoraAck(pct); // <--- Send ACK back to remote
-        } else {
-            Serial.println("[LoRa RX] Ignored VAL, remote not connected.");
-        }
-        messageProcessed = true;
-      }
-
-      // --- LoRa: parse ACK,<pct> from remote ---
-      int ackPct = -1;
-      if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
-          Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
-          if (waitingForAck && ackPct == lastSentDisplayPct) {
-              waitingForAck = false;
+        // --- LoRa sync: parse VAL,<pct> from remote ---
+        int pct = -1;
+        unsigned int pktCnt = 0;
+        if ((sscanf(loraRxBuf, "VAL,%d,%u", &pct, &pktCnt) == 2 || sscanf(loraRxBuf, "VAL,%d", &pct) == 1) && pct >= 0 && pct <= 100) {
+        //  Serial.printf("[LoRa RX] Parsed VAL: %d\n", pct); // DEBUG
+          if (remoteConnected) { // Only accept VAL if remote is considered connected
+              state.setTargetPercentage(pct);
+              sendLoraAck(pct); // <--- Send ACK back to remote
+          } else {
+              Serial.println("[LoRa RX] Ignored VAL, remote not connected.");
           }
           messageProcessed = true;
-      }
-
-      // --- LoRa: parse HBT (Heartbeat) from remote ---
-      if (!messageProcessed && strncmp(loraRxBuf, "HBT,", 4) == 0) {
-        Serial.println("[LoRa RX] Parsed HBT (Heartbeat)");
-        messageProcessed = true;
-      }
-
-      // --- LoRa: parse BTN (Button state) from remote ---
-      int btnState = -1;
-      if (!messageProcessed && strncmp(loraRxBuf, "BTN,", 4) == 0) {
-        Serial.printf("[LoRa RX] Parsed BTN: %s\n", loraRxBuf);
-        messageProcessed = true;
-      }
-
-      if (messageProcessed) {
-        if (!remoteConnected) {
-          Serial.println("Remote (re)connected.");
-          if (manualMode) {
-              display.startModeDisplay(modeNames[3], 1500); // MANUAL - show for 1.5 seconds
-          } else {
-              display.startModeDisplay(modeNames[currentProfile], 1500); // Show current mode for 1.5 seconds
-          }
         }
-        lastRemoteHeartbeatTime = millis();
-        remoteConnected = true;
+
+        // --- LoRa: parse ACK,<pct> from remote ---
+        int ackPct = -1;
+        if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
+            Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
+            if (waitingForAck && ackPct == lastSentDisplayPct) {
+                waitingForAck = false;
+            }
+            messageProcessed = true;
+        }
+
+        // --- LoRa: parse HBT (Heartbeat) from remote ---
+        if (!messageProcessed && strncmp(loraRxBuf, "HBT,", 4) == 0) {
+          unsigned int hbtPktCnt = 0;
+          if (sscanf(loraRxBuf, "HBT,%u", &hbtPktCnt) == 1) {
+          //  Serial.printf("[LoRa RX] Parsed HBT (pkt %u)\n", hbtPktCnt);
+          } else {
+          //  Serial.println("[LoRa RX] Parsed HBT (Heartbeat)");
+          }
+          messageProcessed = true;
+        }
+
+        // --- LoRa: parse BTN (Button state) from remote ---
+        if (!messageProcessed && strncmp(loraRxBuf, "BTN,", 4) == 0) {
+          int btnValue = -1;
+          unsigned int btnPktCnt = 0;
+          if (sscanf(loraRxBuf, "BTN,%d,%u", &btnValue, &btnPktCnt) == 2) {
+            Serial.printf("[LoRa RX] Parsed BTN: %d (pkt %u)\n", btnValue, btnPktCnt);
+          } else {
+            Serial.printf("[LoRa RX] Parsed BTN: %s\n", loraRxBuf);
+          }
+          messageProcessed = true;
+        }
+
+        if (messageProcessed) {
+          // Update heartbeat time with mutex protection
+          if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            if (!remoteConnected) {
+              Serial.println("Remote (re)connected.");
+              if (manualMode) {
+                  display.startModeDisplay(modeNames[3], 1500); // MANUAL - show for 1.5 seconds
+              } else {
+                  display.startModeDisplay(modeNames[currentProfile], 1500); // Show current mode for 1.5 seconds
+              }
+            }
+            lastRemoteHeartbeatTime = millis();
+            remoteConnected = true;
+            xSemaphoreGive(heartbeatMutex);
+          }
+        } else {
+          Serial.println("[LoRa RX] Unknown message format from remote.");
+        }
       } else {
-        Serial.println("[LoRa RX] Unknown message format from remote.");
+        Serial.printf("[LoRa RX] Read error: %d\n", loraStatus);
       }
-    } else {
-      Serial.printf("[LoRa RX] Read error: %d\n", loraStatus);
+      
+      // Restart continuous receive for next message
+      radio.startReceive();
+      
+      xSemaphoreGive(loraMutex);
     }
-    
-    // Restart continuous receive for next message
-    radio.startReceive();
   }
-  PROFILE_SECTION("LoRa receive & processing");
 
   PROFILE_LOOP_END();
   delay(5);
