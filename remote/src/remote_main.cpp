@@ -81,10 +81,7 @@ void IRAM_ATTR loraIsr() {
 }
 
 // --- LoRa Sync State ---
-int lastSentPct = -1;
-bool waitingForAck = false;
-unsigned long lastValSendTime = 0;
-const unsigned long VAL_RESEND_INTERVAL = 200; // ms
+// VAL sync state variables removed since we only send when leaving menu
 
 void sendLoraAck(int pct) {
     if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -241,16 +238,16 @@ void loop() {
         bool messageProcessed = false;
         if (sscanf(loraRxBuf, "DSP,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
           Serial.printf("[LoRa RX from Main] Parsed DSP: %d\n", pct); // DEBUG
-          targetPct = shownPct = pct;
-          sendLoraAck(pct); // <--- Send ACK back to main
+          // Only update if we're not in menu mode to avoid interfering with local adjustments
+          if (state != MENU) {
+            targetPct = shownPct = pct;
+          }
+          sendLoraAck(pct); // Always send ACK regardless of state
           messageProcessed = true;
         }
         int ackPct = -1;
         if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
           Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
-          if (waitingForAck && ackPct == lastSentPct) {
-              waitingForAck = false;
-          }
           messageProcessed = true;
         }
         // ...existing code for other messages...
@@ -273,34 +270,7 @@ void loop() {
   }
   // --- End LoRa non-blocking receive ---
 
-  // --- VAL,<pct> sync logic ---
-  static int lastSentPctLocal = -1;
-  if (state == MENU) {
-    if ((!waitingForAck && targetPct != lastSentPctLocal) || (waitingForAck && millis() - lastValSendTime > VAL_RESEND_INTERVAL)) {
-      // Take mutex before LoRa transmission
-      if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Send new value or resend if waiting for ACK timed out
-        sprintf(txBuf, "VAL,%d,%u", targetPct, pktCnt++);
-        loraEnableInterrupt = false;
-        radio.transmit((uint8_t *)txBuf, strlen(txBuf));
-        int startRxState = radio.startReceive();
-        if (startRxState != RADIOLIB_ERR_NONE) {
-            Serial.print(F("[LoRa TX-VAL] startReceive failed, code "));
-            Serial.println(startRxState);
-        }
-        loraEnableInterrupt = true;
-        lastSentPct = targetPct;
-        lastSentPctLocal = targetPct;
-        waitingForAck = true;
-        lastValSendTime = millis();
-        
-        // Release mutex
-        xSemaphoreGive(loraMutex);
-      }
-    }
-  } else {
-    waitingForAck = false; // Not in menu, clear waiting
-  }
+  // --- VAL,<pct> sync logic removed - only send when leaving menu ---
 
   switch (state) {
 
@@ -349,8 +319,13 @@ void loop() {
       handleButton(UP_BTN, upState, lastUp, pressUp, debUp, incPct);
       handleButton(DOWN_BTN, downState, lastDown, pressDown, debDown, decPct);
 
-      if (millis() - lastUpdateTime > 10 && shownPct != targetPct) {
-        shownPct += (shownPct < targetPct) ? 1 : -1;
+      if (millis() - lastUpdateTime > 50 && shownPct != targetPct) {
+        shownPct += (shownPct < targetPct) ? 5 : -5;
+        // Ensure we don't overshoot the target
+        if ((shownPct > targetPct && targetPct < shownPct - 5) || 
+            (shownPct < targetPct && targetPct > shownPct + 5)) {
+          shownPct = targetPct;
+        }
         drawMenu();
         lastUpdateTime = millis();
       }
@@ -418,7 +393,6 @@ void decPct() {
     targetPct -= 5;
     drawMenu();
     Serial.printf("DEC → %d\n", targetPct);
-    sendPct(targetPct);
   }
 }
 void sendBtn(uint8_t v) {

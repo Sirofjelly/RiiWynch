@@ -425,7 +425,8 @@ void loop() {
         if ((sscanf(loraRxBuf, "VAL,%d,%u", &pct, &pktCnt) == 2 || sscanf(loraRxBuf, "VAL,%d", &pct) == 1) && pct >= 0 && pct <= 100) {
         //  Serial.printf("[LoRa RX] Parsed VAL: %d\n", pct); // DEBUG
           if (remoteConnected) { // Only accept VAL if remote is considered connected
-              state.setTargetPercentage(pct);
+              state.setDirectPercentage(pct); // Set both target and displayed immediately
+              display.update(pct); // Update display immediately
               sendLoraAck(pct); // <--- Send ACK back to remote
           } else {
               Serial.println("[LoRa RX] Ignored VAL, remote not connected.");

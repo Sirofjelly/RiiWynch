@@ -13,6 +13,12 @@ void StateManager::setTargetPercentage(int percentage) {
     targetPercentage = percentage;
 }
 
+void StateManager::setDirectPercentage(int percentage) {
+    targetPercentage = percentage;
+    displayedPercentage = percentage;
+    lastUpdateTime = millis(); // Reset timer to prevent immediate animation
+}
+
 void StateManager::increase() {
   if (targetPercentage < 100) targetPercentage += 5;
 }
