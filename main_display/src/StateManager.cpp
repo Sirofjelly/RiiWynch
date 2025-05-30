@@ -11,30 +11,43 @@ int StateManager::getDisplayedPercentage() const {
 
 void StateManager::setTargetPercentage(int percentage) {
     targetPercentage = percentage;
+    displayedPercentage = percentage;
+    displayUpdateRequested = true;
+    lastUpdateTime = millis();
 }
 
 void StateManager::setDirectPercentage(int percentage) {
     targetPercentage = percentage;
     displayedPercentage = percentage;
-    lastUpdateTime = millis(); // Reset timer to prevent immediate animation
+    displayUpdateRequested = true;
+    lastUpdateTime = millis();
 }
 
 void StateManager::increase() {
-  if (targetPercentage < 100) targetPercentage += 5;
+  if (targetPercentage < 100) {
+    targetPercentage += 5;
+    displayedPercentage = targetPercentage;
+    displayUpdateRequested = true;
+    lastUpdateTime = millis();
+  }
 }
 
 void StateManager::decrease() {
-  if (targetPercentage > 0) targetPercentage -= 5;
+  if (targetPercentage > 0) {
+    targetPercentage -= 5;
+    displayedPercentage = targetPercentage;
+    displayUpdateRequested = true;
+    lastUpdateTime = millis();
+  }
 }
 
 bool StateManager::needsDisplayUpdate() {
-  return millis() - lastUpdateTime > updateInterval &&
-         targetPercentage != displayedPercentage;
+  return displayUpdateRequested || (targetPercentage != displayedPercentage);
 }
 
 void StateManager::updateDisplayStep() {
-  if (displayedPercentage < targetPercentage) displayedPercentage++;
-  else if (displayedPercentage > targetPercentage) displayedPercentage--;
+  displayedPercentage = targetPercentage;
+  displayUpdateRequested = false;
   lastUpdateTime = millis();
 }
 

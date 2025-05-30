@@ -16,4 +16,5 @@ private:
   int displayedPercentage = 0;
   unsigned long lastUpdateTime = 0;
   const unsigned long updateInterval = 10;
+  bool displayUpdateRequested = false; // Flag to trigger display updates
 };
