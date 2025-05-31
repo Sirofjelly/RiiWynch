@@ -124,7 +124,6 @@ void DisplayManager::updateModeDisplay() {
   // Check if display time has elapsed
   if (millis() - _modeDisplayStartTime >= _modeDisplayDuration) {
     _modeDisplayActive = false;
-    // Mode display is now finished, other updates can proceed
   }
 }
 

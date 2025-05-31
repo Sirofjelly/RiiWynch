@@ -1,0 +1,250 @@
+#include "LoRaManager.h"
+#include "HeartbeatManager.h"
+#include <Arduino.h>
+
+// Static member definitions
+LoRaManager* LoRaManager::instance = nullptr;
+const float LoRaManager::FREQUENCY = 868.0;
+const int LoRaManager::OUTPUT_POWER = 14;
+const int LoRaManager::SPREADING_FACTOR = 8;
+const int LoRaManager::CODING_RATE = 5;
+const float LoRaManager::BANDWIDTH = 125.0;
+
+// LoRa pinout definitions
+#define L_CS   8
+#define L_DIO1 14
+#define L_RST  12
+#define L_BUSY 13
+#define VEXT   21
+
+LoRaManager::LoRaManager(StateManager& stateMgr, DisplayManager& displayMgr)
+    : state(stateMgr), display(displayMgr), heartbeatManager(nullptr), messageReady(false),
+      lastSentDisplayPct(-1), waitingForAck(false), lastSendTime(0) {
+    instance = this;
+    mod = new Module(L_CS, L_DIO1, L_RST, L_BUSY, SPI);
+    radio = new SX1262(mod);
+}
+
+bool LoRaManager::begin() {
+    // Enable LoRa power (VEXT)
+    pinMode(VEXT, OUTPUT);
+    digitalWrite(VEXT, LOW); // Enable LoRa power
+
+    // Use correct SPI pins for Heltec WiFi LoRa 32 (V3)
+    SPI.begin(9, 11, 10, 8); // SCK, MISO, MOSI, SS
+    
+    int err = radio->begin(FREQUENCY);
+    if (err != RADIOLIB_ERR_NONE) {
+        Serial.print("LoRa init failed: ");
+        Serial.println(err);
+        return false;
+    }
+    
+    // Configure LoRa parameters
+    radio->setOutputPower(OUTPUT_POWER);
+    radio->setSpreadingFactor(SPREADING_FACTOR);
+    radio->setCodingRate(CODING_RATE);
+    radio->setBandwidth(BANDWIDTH);
+    
+    // Configure LoRa interrupt for non-blocking operation
+    radio->setDio1Action(onReceive);
+    
+    // Start continuous receive mode
+    int rxErr = radio->startReceive();
+    if (rxErr == RADIOLIB_ERR_NONE) {
+        Serial.println("LoRa ready - Interrupt mode enabled.");
+    } else {
+        Serial.print("LoRa startReceive failed: ");
+        Serial.println(rxErr);
+        return false;
+    }
+
+    // Create mutex for LoRa communication
+    loraMutex = xSemaphoreCreateMutex();
+    if (loraMutex == NULL) {
+        Serial.println("Failed to create LoRa mutex!");
+        return false;
+    }
+
+    return true;
+}
+
+void LoRaManager::setHeartbeatManager(HeartbeatManager* hbMgr) {
+    heartbeatManager = hbMgr;
+}
+
+void LoRaManager::update() {
+    // Handle received messages
+    if (messageReady) {
+        if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            messageReady = false; // Clear the flag
+            
+            // Read the received data - this is fast, no blocking
+            int loraStatus = radio->readData((uint8_t*)rxBuffer, sizeof(rxBuffer) - 1);
+            
+            if (loraStatus == RADIOLIB_ERR_NONE) {
+                rxBuffer[sizeof(rxBuffer) - 1] = '\0'; // Ensure null-terminated
+                Serial.print("[LoRa RX] ");
+                Serial.println(rxBuffer);
+                parseMessage(rxBuffer);
+            } else {
+                Serial.printf("[LoRa RX] Read error: %d\n", loraStatus);
+            }
+            
+            // Restart continuous receive for next message
+            restartReceive();
+            xSemaphoreGive(loraMutex);
+        }
+    }
+    
+    // Handle resend logic
+    if (waitingForAck && millis() - lastSendTime > RESEND_INTERVAL) {
+        sendDisplayPercentage(lastSentDisplayPct);
+    }
+}
+
+void LoRaManager::sendDisplayPercentage(int percentage) {
+    if (!waitingForAck || percentage != lastSentDisplayPct) {
+        if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            char txBuf[16];
+            snprintf(txBuf, sizeof(txBuf), "DSP,%d", percentage);
+            
+            if (transmitMessage(txBuf)) {
+                lastSentDisplayPct = percentage;
+                waitingForAck = true;
+                lastSendTime = millis();
+                Serial.print("[LoRa TX to Remote] ");
+                Serial.println(txBuf);
+            }
+            
+            restartReceive();
+            xSemaphoreGive(loraMutex);
+        }
+    } else if (waitingForAck && millis() - lastSendTime > RESEND_INTERVAL) {
+        if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            // Resend if no ACK
+            char txBuf[16];
+            snprintf(txBuf, sizeof(txBuf), "DSP,%d", lastSentDisplayPct);
+            
+            if (transmitMessage(txBuf)) {
+                lastSendTime = millis();
+                Serial.print("[LoRa TX to Remote - RESEND] ");
+                Serial.println(txBuf);
+            }
+            
+            restartReceive();
+            xSemaphoreGive(loraMutex);
+        }
+    }
+}
+
+void LoRaManager::sendACK(int percentage) {
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        char ackBuf[16];
+        snprintf(ackBuf, sizeof(ackBuf), "ACK,%d", percentage);
+        
+        if (transmitMessage(ackBuf)) {
+            Serial.print("[LoRa TX] ");
+            Serial.println(ackBuf);
+        }
+        
+        restartReceive();
+        xSemaphoreGive(loraMutex);
+    }
+}
+
+bool LoRaManager::isMessageReady() {
+    return messageReady;
+}
+
+void LoRaManager::parseMessage(const char* message) {
+    bool messageProcessed = false;
+
+    // Parse VAL,<pct> from remote
+    int pct = -1;
+    unsigned int pktCnt = 0;
+    if ((sscanf(message, "VAL,%d,%u", &pct, &pktCnt) == 2 || sscanf(message, "VAL,%d", &pct) == 1) && pct >= 0 && pct <= 100) {
+        handleVALMessage(pct);
+        messageProcessed = true;
+    }
+
+    // Parse ACK,<pct> from remote
+    int ackPct = -1;
+    if (!messageProcessed && sscanf(message, "ACK,%d", &ackPct) == 1) {
+        handleACKMessage(ackPct);
+        messageProcessed = true;
+    }
+
+    // Parse HBT (Heartbeat) from remote
+    if (!messageProcessed && strncmp(message, "HBT,", 4) == 0) {
+        handleHeartbeat();
+        messageProcessed = true;
+    }
+
+    // Parse BTN (Button state) from remote
+    if (!messageProcessed && strncmp(message, "BTN,", 4) == 0) {
+        int btnValue = -1;
+        unsigned int btnPktCnt = 0;
+        if (sscanf(message, "BTN,%d,%u", &btnValue, &btnPktCnt) == 2) {
+            handleButtonMessage(btnValue);
+        }
+        messageProcessed = true;
+    }
+
+    // Update heartbeat for any valid message
+    if (messageProcessed && heartbeatManager) {
+        heartbeatManager->onHeartbeatReceived();
+    }
+
+    if (!messageProcessed) {
+        Serial.println("[LoRa RX] Unknown message format from remote.");
+    }
+}
+
+void LoRaManager::handleVALMessage(int percentage) {
+    // Only process VAL messages if remote is connected
+    if (heartbeatManager && heartbeatManager->isRemoteConnected()) {
+        state.setDirectPercentage(percentage); // Set both target and displayed immediately
+        display.update(percentage); // Update display immediately
+        sendACK(percentage); // Send ACK back to remote
+    } else {
+        Serial.println("[LoRa RX] Ignored VAL, remote not connected.");
+    }
+}
+
+void LoRaManager::handleACKMessage(int percentage) {
+    Serial.printf("[LoRa RX] Got ACK for %d\n", percentage);
+    if (waitingForAck && percentage == lastSentDisplayPct) {
+        waitingForAck = false;
+    }
+}
+
+void LoRaManager::handleHeartbeat() {
+    // Heartbeat is handled by HeartbeatManager via onHeartbeatReceived call in parseMessage
+    Serial.println("[LoRa RX] Heartbeat processed");
+}
+
+void LoRaManager::handleButtonMessage(int value) {
+    Serial.printf("[LoRa RX] Button state: %d\n", value);
+    // Button message handling can be added here if needed
+}
+
+bool LoRaManager::transmitMessage(const char* message) {
+    int txResult = radio->transmit((uint8_t*)message, strlen(message));
+    if (txResult == RADIOLIB_ERR_NONE) {
+        return true;
+    } else {
+        Serial.printf("[LoRa TX] Error: %d\n", txResult);
+        return false;
+    }
+}
+
+void LoRaManager::restartReceive() {
+    radio->startReceive();
+}
+
+void IRAM_ATTR LoRaManager::onReceive() {
+    if (instance) {
+        instance->messageReady = true;
+    }
+} 

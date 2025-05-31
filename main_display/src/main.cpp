@@ -9,6 +9,10 @@
 #include "StateManager.h"
 #include "ButtonManager.h"
 #include "Settings.h"  // 🆕 Include for loadSettings()
+#include "LoRaManager.h"
+#include "HeartbeatManager.h"
+#include "ProfileManager.h"
+#include "TaskManager.h"
 #include <RadioLib.h>
 #include <FreeRTOS.h>
 #include <semphr.h>
@@ -52,9 +56,16 @@ unsigned long profileLoopCount = 0;
 #endif
 // === END PROFILING SYSTEM ===
 
+// Component instances
 DisplayManager display;
 ButtonManager upButton(7, &state, true);
 ButtonManager downButton(40, &state, false);
+
+// Manager instances
+LoRaManager loraManager(state, display);
+HeartbeatManager heartbeatManager(state, display);
+ProfileManager profileManager(state, display, upButton, downButton);
+TaskManager taskManager;
 
 // Global mode state for cycling
 static int modeState = 0; // 0: Auto 1, 1: Auto 2, 2: Auto 3, 3: Manual
@@ -159,13 +170,13 @@ void heartbeatMonitorTask(void *parameter) {
   }
 }
 
+void handleDisplayUpdates(bool stopPressed);
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Setup.");
-  currentProfile = 0; // Always start in Auto 1
-  manualMode = false;
-  modeState = 0;
-  loadSettingsForProfile(currentProfile); // Load profile 1 settings
+  
+  // Initialize existing subsystems
   setupButtons();
   setupRelays();
   setupServos();
@@ -173,84 +184,51 @@ void setup() {
   setupWebUI();
   display.begin();
   display.update(state.getDisplayedPercentage());
+
+  // Initialize managers
+  Serial.println("Initializing managers...");
   
-  // Initialize remote connection status
-  lastRemoteHeartbeatTime = millis(); // Initialize to current time to avoid immediate timeout
-  remoteConnected = false; // Assume not connected until first heartbeat
-
-  // Enable LoRa power (VEXT)
-  #define VEXT 21
-  pinMode(VEXT, OUTPUT);
-  digitalWrite(VEXT, LOW); // Enable LoRa power
-
-  // Use correct SPI pins for Heltec WiFi LoRa 32 (V3)
-  SPI.begin(9, 11, 10, 8); // SCK, MISO, MOSI, SS
-  int err = radio.begin(868.0);
-  if (err != RADIOLIB_ERR_NONE) {
-    Serial.print("LoRa init failed: ");
-    Serial.println(err);
-  } else {
-    radio.setOutputPower(14);
-    radio.setSpreadingFactor(8);
-    radio.setCodingRate(5);
-    radio.setBandwidth(125.0);
-    
-    // Configure LoRa interrupt for non-blocking operation
-    radio.setDio1Action(onLoRaReceive);
-    
-    // Start continuous receive mode
-    int rxErr = radio.startReceive();
-    if (rxErr == RADIOLIB_ERR_NONE) {
-      Serial.println("LoRa ready - Interrupt mode enabled.");
-    } else {
-      Serial.print("LoRa startReceive failed: ");
-      Serial.println(rxErr);
-    }
-  }
-
-  // Create mutex for heartbeat monitoring
-  heartbeatMutex = xSemaphoreCreateMutex();
-  if (heartbeatMutex == NULL) {
-    Serial.println("Failed to create heartbeat mutex!");
-  }
-
-  // Create mutex for LoRa communication
-  loraMutex = xSemaphoreCreateMutex();
-  if (loraMutex == NULL) {
-    Serial.println("Failed to create LoRa mutex!");
-  }
-
-  // Create heartbeat monitoring task on core 0 (core 1 is used by Arduino loop by default)
-  xTaskCreatePinnedToCore(
-    heartbeatMonitorTask,        // Task function
-    "HeartbeatMonitor",          // Task name
-    2048,                        // Stack size (bytes)
-    NULL,                        // Task parameter
-    3,                           // Priority (higher than default for safety)
-    &heartbeatMonitorTaskHandle, // Task handle
-    0                            // Core ID (0 or 1)
-  );
+  // Initialize ProfileManager first as it sets up the initial profile
+  profileManager.begin();
   
-  if (heartbeatMonitorTaskHandle == NULL) {
-    Serial.println("Failed to create heartbeat monitor task!");
-  } else {
-    Serial.println("Heartbeat monitor task created successfully on core 0");
+  // Initialize LoRaManager
+  if (!loraManager.begin()) {
+    Serial.println("Failed to initialize LoRa Manager!");
   }
+  
+  // Initialize HeartbeatManager
+  if (!heartbeatManager.begin()) {
+    Serial.println("Failed to initialize Heartbeat Manager!");
+  }
+  
+  // Connect managers for inter-manager communication
+  loraManager.setHeartbeatManager(&heartbeatManager);
+  heartbeatManager.setProfileManager(&profileManager);
+  
+  // Initialize TaskManager and register other managers
+  taskManager.begin();
+  taskManager.registerLoRaManager(&loraManager);
+  taskManager.registerHeartbeatManager(&heartbeatManager);
+  
+  Serial.println("Setup complete - All managers initialized");
 }
 
 void loop() {
   PROFILE_LOOP_START();
 
+  // Read button states
   bool startPressed = isStartPressed();
   bool stopPressed  = isStopPressed();
   bool chokePressed = isChokePressed();
   bool brakePressed = isBrakePressed();
   PROFILE_SECTION("Button reads");
 
+  // Update hardware
   updateRelays(startPressed, stopPressed);
   updateServos(chokePressed, brakePressed);
   PROFILE_SECTION("Relay/Servo updates");
 
+  // Safety check for startup
   if (startupInProgress || state.getTargetPercentage() == 0) {
     startPressed = false;
   }
@@ -261,56 +239,33 @@ void loop() {
   handleWebUI();
   PROFILE_SECTION("WebUI handling");
 
-  // Heartbeat monitoring is now handled by dedicated task
-  PROFILE_SECTION("Remote connection check");
+  // Update managers
+  profileManager.update();
+  profileManager.checkModeSwitch(stopPressed);
+  PROFILE_SECTION("Profile management");
 
-  // Profile/mode switching logic
-  static bool profileSwitchComboActive = false;
-  static unsigned long profileSwitchDebounceTime = 0;
-  const unsigned long PROFILE_SWITCH_DEBOUNCE = 500; // ms debounce after change
+  loraManager.update();
+  heartbeatManager.update();
+  PROFILE_SECTION("LoRa & Heartbeat");
 
-  bool upHeld = upButton.isPressed();
-  bool downHeld = downButton.isPressed();
-  bool currentCombo = upHeld && downHeld && stopPressed;
+  // Display management
+  handleDisplayUpdates(stopPressed);
+  PROFILE_SECTION("Display updates");
 
-  // Update mode display (non-blocking timeout handling)
-  display.updateModeDisplay();
-
-  // Fixed logic to ensure "Smooth" profile is not skipped
-  // Ensure button logic synchronizes with Web UI profile changes
-  if (currentCombo && !profileSwitchComboActive && !display.isModeDisplayActive() && 
-      (millis() - profileSwitchDebounceTime > PROFILE_SWITCH_DEBOUNCE)) {
-      modeState = (currentProfile + 1) % 4; // Synchronize modeState with currentProfile
-      manualMode = (modeState == 3);
-      currentProfile = modeState;
-      loadSettingsForProfile(currentProfile);
-
-      profileSwitchComboActive = true;
-      profileSwitchDebounceTime = millis();
-
-      // Display mode change confirmation using new protected display method
-      display.startModeDisplay(modeNames[modeState], 2000); // Show for 2 seconds
-      
-      if (manualMode) {
-          state.setTargetPercentage(5);
-      }
-  } else if (!currentCombo) {
-      profileSwitchComboActive = false;
+  // Servo control in manual mode
+  if (currentState == MANUAL_CONTROL) {
+    // Only adjust gas servo if remote is connected or if stopping
+    if (heartbeatManager.isRemoteConnected() || state.getTargetPercentage() == 0) { 
+        gasServo.write(calculateTargetAngle());
+    }
   }
-  PROFILE_SECTION("Mode switching logic");
+  PROFILE_SECTION("Manual control servo");
 
-  // Always update button states regardless of mode
-  upButton.update();
-  downButton.update();
-  PROFILE_SECTION("Button state updates");
+  PROFILE_LOOP_END();
+  delay(5);
+}
 
-  // --- Debugging Prints ---
-  // Serial.print("Up:"); Serial.print(upHeld); Serial.print(" Dn:"); Serial.print(downHeld); Serial.print(" Stop:"); Serial.print(stopPressed);
-  // Serial.print(" Combo:"); Serial.print(currentCombo); Serial.print(" Active:"); Serial.print(modeChangeComboActive);
-  // Serial.print(" Mode:"); Serial.print(manualMode ? "MAN" : "AUTO");
-  // Serial.println();
-  // --- End Debugging Prints ---
-
+void handleDisplayUpdates(bool stopPressed) {
   // STOP blinking
   static bool flashState = false;
   static unsigned long lastFlashTime = 0;
@@ -329,7 +284,7 @@ void loop() {
     }
     wasStopFlashing = true;
   } else {
-    // 🛠️ Fix: recover display after stop is released
+    // Fix: recover display after stop is released
     if (wasStopFlashing) {
       display.update(state.getDisplayedPercentage());
       wasStopFlashing = false;
@@ -340,162 +295,9 @@ void loop() {
         state.updateDisplayStep();
         int dispPct = state.getDisplayedPercentage();
         display.update(dispPct);
-        // --- LoRa sync: send displayed percentage to remote, wait for ACK ---
-        if (!waitingForAck || dispPct != lastSentDisplayPct) {
-            if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                char loraTxBuf[16];
-                snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", dispPct);
-                Serial.print("[LoRa TX to Remote] ");
-                Serial.println(loraTxBuf);
-                int txResult = radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
-                if (txResult == RADIOLIB_ERR_NONE) {
-                    lastSentDisplayPct = dispPct;
-                    waitingForAck = true;
-                    lastLoraSendTime = millis();
-                } else {
-                    Serial.printf("[LoRa TX] Error: %d\n", txResult);
-                }
-                // Restart receive mode after transmission
-                radio.startReceive();
-                xSemaphoreGive(loraMutex);
-            }
-        } else if (waitingForAck && millis() - lastLoraSendTime > LORA_RESEND_INTERVAL) {
-            if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                // Resend if no ACK
-                char loraTxBuf[16];
-                snprintf(loraTxBuf, sizeof(loraTxBuf), "DSP,%d", lastSentDisplayPct);
-                Serial.print("[LoRa TX to Remote - RESEND] ");
-                Serial.println(loraTxBuf);
-                int txResult = radio.transmit((uint8_t*)loraTxBuf, strlen(loraTxBuf));
-                if (txResult == RADIOLIB_ERR_NONE) {
-                    lastLoraSendTime = millis();
-                } else {
-                    Serial.printf("[LoRa TX RESEND] Error: %d\n", txResult);
-                }
-                // Restart receive mode after transmission
-                radio.startReceive();
-                xSemaphoreGive(loraMutex);
-            }
-        }
-    }
-    /* OLD Logic - commented out
-    // Screen updates based on mode
-    if (!manualMode) {
-        // Automatic mode updates
-        if (state.needsDisplayUpdate()) {
-            state.updateDisplayStep();
-            display.update(state.getDisplayedPercentage());
-        }
-    } else {
-        // Manual mode updates (if any needed besides mode display)
-        // Display update is now handled above, regardless of mode.
-    }
-    */
-  }
-  PROFILE_SECTION("Display updates & LoRa TX");
-
-  // In MANUAL_CONTROL state, always update servo to match percentage (auto and manual mode)
-  if (currentState == MANUAL_CONTROL) {
-    // Only adjust gas servo if remote is connected or if connection is not required for manual adjustments
-    // For safety, let's assume connection is required for any gas servo action not explicitly stop.
-    if (remoteConnected || state.getTargetPercentage() == 0) { 
-        gasServo.write(calculateTargetAngle());
+        
+        // Send display percentage to remote via LoRa
+        loraManager.sendDisplayPercentage(dispPct);
     }
   }
-  PROFILE_SECTION("Manual control servo");
-
-  // --- LoRa receive logic (INTERRUPT-BASED NON-BLOCKING) ---
-  if (loraMessageReady) {
-    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      loraMessageReady = false; // Clear the flag
-      
-      // Read the received data - this is fast, no blocking
-      int loraStatus = radio.readData((uint8_t*)loraRxBuf, sizeof(loraRxBuf) - 1);
-      
-      if (loraStatus == RADIOLIB_ERR_NONE) {
-        loraRxBuf[sizeof(loraRxBuf) - 1] = '\0'; // Ensure null-terminated
-        Serial.print("[LoRa RX] ");
-        Serial.println(loraRxBuf);
-
-        bool messageProcessed = false;
-
-        // --- LoRa sync: parse VAL,<pct> from remote ---
-        int pct = -1;
-        unsigned int pktCnt = 0;
-        if ((sscanf(loraRxBuf, "VAL,%d,%u", &pct, &pktCnt) == 2 || sscanf(loraRxBuf, "VAL,%d", &pct) == 1) && pct >= 0 && pct <= 100) {
-        //  Serial.printf("[LoRa RX] Parsed VAL: %d\n", pct); // DEBUG
-          if (remoteConnected) { // Only accept VAL if remote is considered connected
-              state.setDirectPercentage(pct); // Set both target and displayed immediately
-              display.update(pct); // Update display immediately
-              sendLoraAck(pct); // <--- Send ACK back to remote
-          } else {
-              Serial.println("[LoRa RX] Ignored VAL, remote not connected.");
-          }
-          messageProcessed = true;
-        }
-
-        // --- LoRa: parse ACK,<pct> from remote ---
-        int ackPct = -1;
-        if (!messageProcessed && sscanf(loraRxBuf, "ACK,%d", &ackPct) == 1) {
-            Serial.printf("[LoRa RX] Got ACK for %d\n", ackPct);
-            if (waitingForAck && ackPct == lastSentDisplayPct) {
-                waitingForAck = false;
-            }
-            messageProcessed = true;
-        }
-
-        // --- LoRa: parse HBT (Heartbeat) from remote ---
-        if (!messageProcessed && strncmp(loraRxBuf, "HBT,", 4) == 0) {
-          unsigned int hbtPktCnt = 0;
-          if (sscanf(loraRxBuf, "HBT,%u", &hbtPktCnt) == 1) {
-          //  Serial.printf("[LoRa RX] Parsed HBT (pkt %u)\n", hbtPktCnt);
-          } else {
-          //  Serial.println("[LoRa RX] Parsed HBT (Heartbeat)");
-          }
-          messageProcessed = true;
-        }
-
-        // --- LoRa: parse BTN (Button state) from remote ---
-        if (!messageProcessed && strncmp(loraRxBuf, "BTN,", 4) == 0) {
-          int btnValue = -1;
-          unsigned int btnPktCnt = 0;
-          if (sscanf(loraRxBuf, "BTN,%d,%u", &btnValue, &btnPktCnt) == 2) {
-            Serial.printf("[LoRa RX] Parsed BTN: %d (pkt %u)\n", btnValue, btnPktCnt);
-          } else {
-            Serial.printf("[LoRa RX] Parsed BTN: %s\n", loraRxBuf);
-          }
-          messageProcessed = true;
-        }
-
-        if (messageProcessed) {
-          // Update heartbeat time with mutex protection
-          if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            if (!remoteConnected) {
-              Serial.println("Remote (re)connected.");
-              if (manualMode) {
-                  display.startModeDisplay(modeNames[3], 1500); // MANUAL - show for 1.5 seconds
-              } else {
-                  display.startModeDisplay(modeNames[currentProfile], 1500); // Show current mode for 1.5 seconds
-              }
-            }
-            lastRemoteHeartbeatTime = millis();
-            remoteConnected = true;
-            xSemaphoreGive(heartbeatMutex);
-          }
-        } else {
-          Serial.println("[LoRa RX] Unknown message format from remote.");
-        }
-      } else {
-        Serial.printf("[LoRa RX] Read error: %d\n", loraStatus);
-      }
-      
-      // Restart continuous receive for next message
-      radio.startReceive();
-      
-      xSemaphoreGive(loraMutex);
-    }
-  }
-
-  PROFILE_LOOP_END();
-  delay(5);
 }

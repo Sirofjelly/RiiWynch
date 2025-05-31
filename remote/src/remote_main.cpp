@@ -268,9 +268,6 @@ void loop() {
       xSemaphoreGive(loraMutex);
     }
   }
-  // --- End LoRa non-blocking receive ---
-
-  // --- VAL,<pct> sync logic removed - only send when leaving menu ---
 
   switch (state) {
 
@@ -298,7 +295,6 @@ void loop() {
         lastStartUpdate = millis();
       }
 
-      // Heartbeat is now handled by dedicated task
     } break;
 
     // ─── MENU SCREEN ───
@@ -313,8 +309,6 @@ void loop() {
         lastStartUpdate = millis();
         break;
       }
-
-      // Heartbeat is now handled by dedicated task
 
       handleButton(UP_BTN, upState, lastUp, pressUp, debUp, incPct);
       handleButton(DOWN_BTN, downState, lastDown, pressDown, debDown, decPct);
