@@ -80,17 +80,34 @@ void LoRaManager::update() {
         if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             messageReady = false; // Clear the flag
             
-            // Read the received data - this is fast, no blocking
-            int loraStatus = radio->readData((uint8_t*)rxBuffer, sizeof(rxBuffer) - 1);
+            // Get packet length BEFORE reading
+            int packetLength = radio->getPacketLength(); 
+
+            if (packetLength > 0 && (size_t)packetLength < sizeof(rxBuffer)) {
+                // Read the received data
+                int loraStatus = radio->readData((uint8_t*)rxBuffer, packetLength);
             
-            if (loraStatus == RADIOLIB_ERR_NONE) {
-                rxBuffer[sizeof(rxBuffer) - 1] = '\0'; // Ensure null-terminated
-                Serial.print("[LoRa RX] ");
-                Serial.println(rxBuffer);
-                parseMessage(rxBuffer);
-            } else {
-                Serial.printf("[LoRa RX] Read error: %d\n", loraStatus);
+                if (loraStatus == RADIOLIB_ERR_NONE) {
+                    rxBuffer[packetLength] = '\0'; // Null-terminate correctly after actual data
+                    Serial.print("[LoRa RX] ");
+                    Serial.println(rxBuffer);
+                    parseMessage(rxBuffer);
+                } else {
+                    Serial.printf("[LoRa RX] Read error: %d\n", loraStatus);
+                }
+            } else if (packetLength >= (int)sizeof(rxBuffer)) {
+                Serial.printf("[LoRa RX] Error: Packet too large (%d bytes) for buffer (%d bytes). Flushing.\n", packetLength, (int)sizeof(rxBuffer));
+                // Flush the RX buffer by restarting receive. This might discard the oversized packet.
+                // Alternatively, one could try to read it in chunks if the protocol supported it, but simple flush is safer here.
+            } else if (packetLength == 0 && radio->available() > 0) {
+                // This case might occur if getPacketLength() returned 0 but there's data.
+                // Or if messageReady was set but packet disappeared.
+                // For safety, just log and prepare for next packet.
+                Serial.println("[LoRa RX] Warning: messageReady was true but packetLength is 0. Radio available > 0.");
+            } else if (packetLength < 0) {
+                Serial.printf("[LoRa RX] Error: getPacketLength returned error code %d\n", packetLength);
             }
+            // If packetLength was 0 and radio->available was 0, it might be a spurious interrupt or flag.
             
             // Restart continuous receive for next message
             restartReceive();
@@ -222,12 +239,16 @@ void LoRaManager::handleVALMessage(int percentage) {
         state.setDirectPercentage(percentage); // Set both target and displayed immediately
         display.update(percentage); // Update display immediately
         
-        // Send ACK to acknowledge receipt
+        // Send ACK to acknowledge receipt FIRST
         sendACK(percentage);
         
         // Send DSP to update remote's display (main is authoritative)
         // Use a small delay to avoid collision with ACK
-        delay(10);
+        // The delay might still be useful even after sending ACK first, 
+        // to give the remote time to process the ACK and re-enable receive.
+        vTaskDelay(pdMS_TO_TICKS(20)); // Using FreeRTOS delay if available, or simple delay()
+        // delay(20); // If not using FreeRTOS, ensure this is a non-blocking delay or a short blocking one.
+
         sendDisplayPercentage(percentage);
     } else {
         Serial.println("[LoRa RX] Ignored VAL, remote not connected.");

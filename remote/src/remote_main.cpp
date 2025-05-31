@@ -33,6 +33,8 @@ namespace Config {
     static const unsigned long START_UPDATE_MS = 500;
     static const unsigned long HEARTBEAT_INTERVAL = 500;
     static const unsigned long TRIPLE_TAP_WINDOW = 1500;
+    static const unsigned long VAL_RESEND_INTERVAL_MS = 2000; // Interval for resending VAL if no ACK
+    static const int MAX_VAL_RESENDS = 5;                   // Max number of VAL resends (increased from 3)
     
     // Display constants
     static const int PERCENTAGE_STEP = 5;
@@ -107,6 +109,12 @@ char txBuf[32];
 uint16_t pktCnt = 0;
 static bool lastReportedAnyPressedState = false;
 
+// ─── State for VAL message ACK and Resend ───
+static bool waitingForVAL_ACK = false;
+static unsigned long lastVAL_SendTime = 0;
+static int lastSentVAL_Pct = -1;
+static int valResendCount = 0;
+
 // ─── LoRa Non-Blocking Receive ───
 volatile bool loraReceivedFlag = false;
 volatile bool loraEnableInterrupt = true;
@@ -145,7 +153,35 @@ bool transmitLoRaMessage(const char* format, ...) {
 
 // ─── Simplified LoRa Send Functions ───
 void sendBtn(uint8_t v) { transmitLoRaMessage("BTN,%d,%d,%u", DEVICE_ID, v, pktCnt++); }
-void sendPct(int p) { transmitLoRaMessage("VAL,%d,%d,%u", DEVICE_ID, p, pktCnt++); }
+void sendPct(int p) {
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(Config::LORA_MUTEX_TIMEOUT)) == pdTRUE) {
+        lastSentVAL_Pct = p;
+        pktCnt++; // Increment packet counter for this new VAL message
+        snprintf(txBuf, sizeof(txBuf), "VAL,%d,%d,%u", DEVICE_ID, lastSentVAL_Pct, pktCnt);
+        
+        loraEnableInterrupt = false;
+        int result = radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+        
+        int startRxState = radio.startReceive();
+        if (startRxState != RADIOLIB_ERR_NONE) {
+            Serial.printf("[LoRa TX VAL] startReceive failed after VAL send: %d\n", startRxState);
+        }
+        loraEnableInterrupt = true;
+
+        if (result == RADIOLIB_ERR_NONE) {
+            Serial.printf("[LoRa TX VAL to Main] VAL,%d,%d,%u (new value)\n", DEVICE_ID, lastSentVAL_Pct, pktCnt);
+            waitingForVAL_ACK = true;
+            lastVAL_SendTime = millis();
+            valResendCount = 0;
+        } else {
+            Serial.printf("[LoRa TX VAL to Main] Transmission failed: %d\n", result);
+            // If initial transmission fails, perhaps retry or log more verbosely
+        }
+        xSemaphoreGive(loraMutex);
+    } else {
+        Serial.println("[LoRa TX VAL to Main] Failed to acquire mutex for sending VAL.");
+    }
+}
 void sendLoraAck(int pct) { transmitLoRaMessage("ACK,%d,%d", DEVICE_ID, pct); }
 
 // ─────────────────────────────────────────
@@ -161,13 +197,15 @@ void parseLoRaMessage(const char* buffer) {
         if (srcId != DEVICE_ID) {
             Serial.printf("[LoRa RX] DSP: %d%% (current state: %s, targetPct: %d, shownPct: %d)\n", 
                          pct, (state == START) ? "START" : "MENU", targetPct, shownPct);
+            // Always send ACK for DSP message from main
+            sendLoraAck(pct);
+
             if (state != MENU) {  // Only update if not in menu mode
                 targetPct = shownPct = pct;
                 Serial.printf("[Remote] Updated display to %d%% from main\n", pct);
             } else {
-                Serial.println("[Remote] Ignoring DSP update - in MENU mode");
+                Serial.println("[Remote] Ignoring DSP update value - in MENU mode, but ACK sent.");
             }
-            sendLoraAck(pct);
         } else {
             // Reduce self-echo logging noise like in main
             static unsigned long selfEchoCount = 0;
@@ -185,6 +223,12 @@ void parseLoRaMessage(const char* buffer) {
     if (!messageProcessed && sscanf(buffer, "ACK,%d,%d", &ackSrcId, &ackPct) == 2) {
         if (ackSrcId != DEVICE_ID) {
             Serial.printf("[LoRa RX] ACK: %d%%\n", ackPct);
+            // Check if this is an ACK for a VAL message we sent
+            if (waitingForVAL_ACK && ackPct == lastSentVAL_Pct) {
+                Serial.printf("[Remote] Received ACK from Main for VAL %d%%\n", ackPct);
+                waitingForVAL_ACK = false;
+                valResendCount = 0; // Reset resend counter on successful ACK
+            }
         } else {
             // Reduce self-echo logging noise
             static unsigned long ackSelfEchoCount = 0;
@@ -466,6 +510,41 @@ void loop() {
             radio.startReceive();
             loraEnableInterrupt = true;
             xSemaphoreGive(loraMutex);
+        }
+    }
+
+    // Handle VAL message resend logic
+    if (waitingForVAL_ACK && millis() - lastVAL_SendTime > Config::VAL_RESEND_INTERVAL_MS) {
+        if (valResendCount < Config::MAX_VAL_RESENDS) {
+            if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(Config::LORA_MUTEX_TIMEOUT)) == pdTRUE) {
+                // Re-increment pktCnt for the resent message, as it's a new transmission attempt
+                // pktCnt++; // No, use the same pktCnt as the original for main to deduplicate if needed.
+                snprintf(txBuf, sizeof(txBuf), "VAL,%d,%d,%u", DEVICE_ID, lastSentVAL_Pct, pktCnt); // Use original pktCnt
+
+                loraEnableInterrupt = false;
+                int result = radio.transmit((uint8_t *)txBuf, strlen(txBuf));
+                int startRxState = radio.startReceive();
+                if (startRxState != RADIOLIB_ERR_NONE) {
+                    Serial.printf("[LoRa TX VAL RESEND] startReceive failed: %d\n", startRxState);
+                }
+                loraEnableInterrupt = true;
+
+                if (result == RADIOLIB_ERR_NONE) {
+                    lastVAL_SendTime = millis();
+                    valResendCount++;
+                    Serial.printf("[LoRa TX VAL to Main - RESEND #%d] VAL,%d,%d,%u\n", valResendCount, DEVICE_ID, lastSentVAL_Pct, pktCnt);
+                } else {
+                    Serial.printf("[LoRa TX VAL to Main - RESEND #%d FAILED] Error: %d\n", valResendCount + 1, result);
+                    // Optionally, could stop trying to resend here if transmit fails
+                }
+                xSemaphoreGive(loraMutex);
+            } else {
+                Serial.println("[LoRa TX VAL RESEND] Failed to acquire mutex for resending VAL.");
+            }
+        } else {
+            Serial.printf("[Remote] VAL %d%% to Main failed after %d resends. Giving up.\n", lastSentVAL_Pct, Config::MAX_VAL_RESENDS);
+            waitingForVAL_ACK = false; // Give up
+            valResendCount = 0;
         }
     }
 
