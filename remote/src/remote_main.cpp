@@ -347,6 +347,13 @@ void drawStart() {
     int w = u8g2.getStrWidth("START");
     u8g2.drawStr((128 - w) / 2, 46, "START");
 
+    // Display current percentage on the left side
+    char pctBuf[8];
+    sprintf(pctBuf, "%d%%", shownPct);
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.drawStr(6, 13, pctBuf);
+
+    // Display battery voltage on the right side
     char buf[8];
     sprintf(buf, "%.2fV", readBattery() / 1000.0);
     u8g2.setFont(u8g2_font_6x10_tf);
