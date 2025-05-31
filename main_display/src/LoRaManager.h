@@ -20,6 +20,7 @@ public:
     bool isMessageReady();
     void setHeartbeatManager(HeartbeatManager* hbMgr);
     SemaphoreHandle_t getMutex() { return loraMutex; }
+    static const int DEVICE_ID;
     
 private:
     // LoRa hardware

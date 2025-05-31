@@ -9,6 +9,7 @@ const int LoRaManager::OUTPUT_POWER = 14;
 const int LoRaManager::SPREADING_FACTOR = 8;
 const int LoRaManager::CODING_RATE = 5;
 const float LoRaManager::BANDWIDTH = 125.0;
+const int LoRaManager::DEVICE_ID = 1; // Main display device ID
 
 // LoRa pinout definitions
 #define L_CS   8
@@ -106,9 +107,8 @@ void LoRaManager::update() {
 void LoRaManager::sendDisplayPercentage(int percentage) {
     if (!waitingForAck || percentage != lastSentDisplayPct) {
         if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            char txBuf[16];
-            snprintf(txBuf, sizeof(txBuf), "DSP,%d", percentage);
-            
+            char txBuf[24];
+            snprintf(txBuf, sizeof(txBuf), "DSP,%d,%d", DEVICE_ID, percentage);
             if (transmitMessage(txBuf)) {
                 lastSentDisplayPct = percentage;
                 waitingForAck = true;
@@ -116,22 +116,18 @@ void LoRaManager::sendDisplayPercentage(int percentage) {
                 Serial.print("[LoRa TX to Remote] ");
                 Serial.println(txBuf);
             }
-            
             restartReceive();
             xSemaphoreGive(loraMutex);
         }
     } else if (waitingForAck && millis() - lastSendTime > RESEND_INTERVAL) {
         if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            // Resend if no ACK
-            char txBuf[16];
-            snprintf(txBuf, sizeof(txBuf), "DSP,%d", lastSentDisplayPct);
-            
+            char txBuf[24];
+            snprintf(txBuf, sizeof(txBuf), "DSP,%d,%d", DEVICE_ID, lastSentDisplayPct);
             if (transmitMessage(txBuf)) {
                 lastSendTime = millis();
                 Serial.print("[LoRa TX to Remote - RESEND] ");
                 Serial.println(txBuf);
             }
-            
             restartReceive();
             xSemaphoreGive(loraMutex);
         }
@@ -140,14 +136,12 @@ void LoRaManager::sendDisplayPercentage(int percentage) {
 
 void LoRaManager::sendACK(int percentage) {
     if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        char ackBuf[16];
-        snprintf(ackBuf, sizeof(ackBuf), "ACK,%d", percentage);
-        
+        char ackBuf[24];
+        snprintf(ackBuf, sizeof(ackBuf), "ACK,%d,%d", DEVICE_ID, percentage);
         if (transmitMessage(ackBuf)) {
             Serial.print("[LoRa TX] ");
             Serial.println(ackBuf);
         }
-        
         restartReceive();
         xSemaphoreGive(loraMutex);
     }
@@ -159,43 +153,57 @@ bool LoRaManager::isMessageReady() {
 
 void LoRaManager::parseMessage(const char* message) {
     bool messageProcessed = false;
-
-    // Parse VAL,<pct> from remote
+    int srcId = -1;
+    // Parse VAL,<srcId>,<pct>[,<pktCnt>] from remote
     int pct = -1;
     unsigned int pktCnt = 0;
-    if ((sscanf(message, "VAL,%d,%u", &pct, &pktCnt) == 2 || sscanf(message, "VAL,%d", &pct) == 1) && pct >= 0 && pct <= 100) {
-        handleVALMessage(pct);
-        messageProcessed = true;
+    if ((sscanf(message, "VAL,%d,%d,%u", &srcId, &pct, &pktCnt) >= 2 || sscanf(message, "VAL,%d,%d", &srcId, &pct) == 2) && pct >= 0 && pct <= 100) {
+        if (srcId != DEVICE_ID) {
+            handleVALMessage(pct);
+            messageProcessed = true;
+        }
     }
-
-    // Parse ACK,<pct> from remote
+    // Parse ACK,<srcId>,<pct> from remote
     int ackPct = -1;
-    if (!messageProcessed && sscanf(message, "ACK,%d", &ackPct) == 1) {
-        handleACKMessage(ackPct);
-        messageProcessed = true;
+    int ackSrcId = -1;
+    if (!messageProcessed && sscanf(message, "ACK,%d,%d", &ackSrcId, &ackPct) == 2) {
+        if (ackSrcId != DEVICE_ID) {
+            handleACKMessage(ackPct);
+            messageProcessed = true;
+        }
     }
-
     // Parse HBT (Heartbeat) from remote
     if (!messageProcessed && strncmp(message, "HBT,", 4) == 0) {
         handleHeartbeat();
         messageProcessed = true;
     }
-
     // Parse BTN (Button state) from remote
     if (!messageProcessed && strncmp(message, "BTN,", 4) == 0) {
         int btnValue = -1;
         unsigned int btnPktCnt = 0;
-        if (sscanf(message, "BTN,%d,%u", &btnValue, &btnPktCnt) == 2) {
-            handleButtonMessage(btnValue);
+        int btnSrcId = -1;
+        if (sscanf(message, "BTN,%d,%d,%u", &btnSrcId, &btnValue, &btnPktCnt) == 3) {
+            if (btnSrcId != DEVICE_ID) {
+                handleButtonMessage(btnValue);
+            }
         }
         messageProcessed = true;
     }
-
+    // Handle DSP messages (echo/loopback detection)
+    int dspSrcId = -1;
+    int dspPct = -1;
+    if (!messageProcessed && sscanf(message, "DSP,%d,%d", &dspSrcId, &dspPct) == 2) {
+        if (dspSrcId == DEVICE_ID) {
+            Serial.println("[LoRa RX] Ignoring DSP message (self echo/loopback)");
+        } else {
+            Serial.println("[LoRa RX] Ignoring DSP message (not for this device)");
+        }
+        messageProcessed = true;
+    }
     // Update heartbeat for any valid message
     if (messageProcessed && heartbeatManager) {
         heartbeatManager->onHeartbeatReceived();
     }
-
     if (!messageProcessed) {
         Serial.println("[LoRa RX] Unknown message format from remote.");
     }

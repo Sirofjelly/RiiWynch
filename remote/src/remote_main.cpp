@@ -7,6 +7,8 @@
 #include <semphr.h>
 #include <stdarg.h>
 
+static const int DEVICE_ID = 2; // Remote device ID
+
 // ─────────────────────────────────────────
 //         BASIC FORWARD DECLARATIONS
 // ─────────────────────────────────────────
@@ -142,31 +144,67 @@ bool transmitLoRaMessage(const char* format, ...) {
 }
 
 // ─── Simplified LoRa Send Functions ───
-void sendBtn(uint8_t v) { transmitLoRaMessage("BTN,%d,%u", v, pktCnt++); }
-void sendPct(int p) { transmitLoRaMessage("VAL,%d,%u", p, pktCnt++); }
-void sendLoraAck(int pct) { transmitLoRaMessage("ACK,%d", pct); }
+void sendBtn(uint8_t v) { transmitLoRaMessage("BTN,%d,%d,%u", DEVICE_ID, v, pktCnt++); }
+void sendPct(int p) { transmitLoRaMessage("VAL,%d,%d,%u", DEVICE_ID, p, pktCnt++); }
+void sendLoraAck(int pct) { transmitLoRaMessage("ACK,%d,%d", DEVICE_ID, pct); }
 
 // ─────────────────────────────────────────
 //            MESSAGE PARSING
 // ─────────────────────────────────────────
 void parseLoRaMessage(const char* buffer) {
+    int srcId = -1;
     int pct = -1;
     bool messageProcessed = false;
     
     // Parse DSP message from main display
-    if (sscanf(buffer, "DSP,%d", &pct) == 1 && pct >= 0 && pct <= 100) {
-        Serial.printf("[LoRa RX] DSP: %d\n", pct);
-        if (state != MENU) {  // Only update if not in menu mode
-            targetPct = shownPct = pct;
+    if (sscanf(buffer, "DSP,%d,%d", &srcId, &pct) == 2 && pct >= 0 && pct <= 100) {
+        if (srcId != DEVICE_ID) {
+            Serial.printf("[LoRa RX] DSP: %d\n", pct);
+            if (state != MENU) {  // Only update if not in menu mode
+                targetPct = shownPct = pct;
+            }
+            sendLoraAck(pct);
+        } else {
+            Serial.println("[LoRa RX] Ignoring DSP message (self echo/loopback)");
         }
-        sendLoraAck(pct);
         messageProcessed = true;
     }
     
     // Parse ACK message
+    int ackSrcId = -1;
     int ackPct = -1;
-    if (!messageProcessed && sscanf(buffer, "ACK,%d", &ackPct) == 1) {
-        Serial.printf("[LoRa RX] ACK: %d\n", ackPct);
+    if (!messageProcessed && sscanf(buffer, "ACK,%d,%d", &ackSrcId, &ackPct) == 2) {
+        if (ackSrcId != DEVICE_ID) {
+            Serial.printf("[LoRa RX] ACK: %d\n", ackPct);
+        } else {
+            Serial.println("[LoRa RX] Ignoring ACK message (self echo/loopback)");
+        }
+        messageProcessed = true;
+    }
+    
+    // Parse VAL message
+    int valSrcId = -1;
+    int valPct = -1;
+    unsigned int valPktCnt = 0;
+    if (!messageProcessed && (sscanf(buffer, "VAL,%d,%d,%u", &valSrcId, &valPct, &valPktCnt) >= 2 || sscanf(buffer, "VAL,%d,%d", &valSrcId, &valPct) == 2)) {
+        if (valSrcId != DEVICE_ID) {
+            Serial.printf("[LoRa RX] VAL: %d\n", valPct);
+        } else {
+            Serial.println("[LoRa RX] Ignoring VAL message (self echo/loopback)");
+        }
+        messageProcessed = true;
+    }
+    
+    // Parse BTN message
+    int btnSrcId = -1;
+    int btnValue = -1;
+    unsigned int btnPktCnt = 0;
+    if (!messageProcessed && sscanf(buffer, "BTN,%d,%d,%u", &btnSrcId, &btnValue, &btnPktCnt) == 3) {
+        if (btnSrcId != DEVICE_ID) {
+            Serial.printf("[LoRa RX] BTN: %d\n", btnValue);
+        } else {
+            Serial.println("[LoRa RX] Ignoring BTN message (self echo/loopback)");
+        }
         messageProcessed = true;
     }
     
