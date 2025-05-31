@@ -99,9 +99,10 @@ void HeartbeatManager::checkTimeout() {
 void HeartbeatManager::executeEmergencyStop() {
     // Key safety action - stop the system immediately
     state.setTargetPercentage(0);
+    state.setEmergencyStop(true);
     
     // Update display to show connection lost
-    display.updateText("NO REMOTE");
+    display.updateText("Fuck");
     
     // Update connection status
     remoteConnected = false;

@@ -51,3 +51,12 @@ void StateManager::updateDisplayStep() {
   lastUpdateTime = millis();
 }
 
+// Emergency Stop methods
+void StateManager::setEmergencyStop(bool active) {
+    emergencyStopActive = active;
+}
+
+bool StateManager::isEmergencyStopActive() const {
+    return emergencyStopActive;
+}
+

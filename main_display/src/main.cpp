@@ -123,7 +123,7 @@ void loop() {
 
   // Read button states
   bool startPressed = isStartPressed();
-  bool stopPressed  = isStopPressed();
+  bool stopPressed  = isStopPressed() || getGlobalStateManager().isEmergencyStopActive();
   bool chokePressed = isChokePressed();
   bool brakePressed = isBrakePressed();
   PROFILE_SECTION("Button reads");
@@ -141,6 +141,11 @@ void loop() {
   updateStartup(startPressed, stopPressed);
   PROFILE_SECTION("Startup update");
   
+  // Reset emergency stop if start is pressed and remote is connected
+  if (startPressed && heartbeatManager.isRemoteConnected()) {
+      getGlobalStateManager().setEmergencyStop(false);
+  }
+
   handleWebUI();
   PROFILE_SECTION("WebUI handling");
 
@@ -151,7 +156,6 @@ void loop() {
 
   loraManager.update();
   heartbeatManager.update();
-  PROFILE_SECTION("LoRa & Heartbeat");
 
   // Display management
   handleDisplayUpdates(stopPressed);
