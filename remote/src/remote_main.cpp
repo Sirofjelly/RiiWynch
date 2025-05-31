@@ -159,13 +159,22 @@ void parseLoRaMessage(const char* buffer) {
     // Parse DSP message from main display
     if (sscanf(buffer, "DSP,%d,%d", &srcId, &pct) == 2 && pct >= 0 && pct <= 100) {
         if (srcId != DEVICE_ID) {
-            Serial.printf("[LoRa RX] DSP: %d\n", pct);
+            Serial.printf("[LoRa RX] DSP: %d%% (current state: %s, targetPct: %d, shownPct: %d)\n", 
+                         pct, (state == START) ? "START" : "MENU", targetPct, shownPct);
             if (state != MENU) {  // Only update if not in menu mode
                 targetPct = shownPct = pct;
+                Serial.printf("[Remote] Updated display to %d%% from main\n", pct);
+            } else {
+                Serial.println("[Remote] Ignoring DSP update - in MENU mode");
             }
             sendLoraAck(pct);
         } else {
-            Serial.println("[LoRa RX] Ignoring DSP message (self echo/loopback)");
+            // Reduce self-echo logging noise like in main
+            static unsigned long selfEchoCount = 0;
+            selfEchoCount++;
+            if (selfEchoCount % 100 == 0) {
+                Serial.printf("[LoRa RX] DSP self-echo count: %lu\n", selfEchoCount);
+            }
         }
         messageProcessed = true;
     }
@@ -175,9 +184,14 @@ void parseLoRaMessage(const char* buffer) {
     int ackPct = -1;
     if (!messageProcessed && sscanf(buffer, "ACK,%d,%d", &ackSrcId, &ackPct) == 2) {
         if (ackSrcId != DEVICE_ID) {
-            Serial.printf("[LoRa RX] ACK: %d\n", ackPct);
+            Serial.printf("[LoRa RX] ACK: %d%%\n", ackPct);
         } else {
-            Serial.println("[LoRa RX] Ignoring ACK message (self echo/loopback)");
+            // Reduce self-echo logging noise
+            static unsigned long ackSelfEchoCount = 0;
+            ackSelfEchoCount++;
+            if (ackSelfEchoCount % 100 == 0) {
+                Serial.printf("[LoRa RX] ACK self-echo count: %lu\n", ackSelfEchoCount);
+            }
         }
         messageProcessed = true;
     }
@@ -188,9 +202,14 @@ void parseLoRaMessage(const char* buffer) {
     unsigned int valPktCnt = 0;
     if (!messageProcessed && (sscanf(buffer, "VAL,%d,%d,%u", &valSrcId, &valPct, &valPktCnt) >= 2 || sscanf(buffer, "VAL,%d,%d", &valSrcId, &valPct) == 2)) {
         if (valSrcId != DEVICE_ID) {
-            Serial.printf("[LoRa RX] VAL: %d\n", valPct);
+            Serial.printf("[LoRa RX] VAL: %d%%\n", valPct);
         } else {
-            Serial.println("[LoRa RX] Ignoring VAL message (self echo/loopback)");
+            // Reduce self-echo logging noise
+            static unsigned long valSelfEchoCount = 0;
+            valSelfEchoCount++;
+            if (valSelfEchoCount % 100 == 0) {
+                Serial.printf("[LoRa RX] VAL self-echo count: %lu\n", valSelfEchoCount);
+            }
         }
         messageProcessed = true;
     }
@@ -203,7 +222,12 @@ void parseLoRaMessage(const char* buffer) {
         if (btnSrcId != DEVICE_ID) {
             Serial.printf("[LoRa RX] BTN: %d\n", btnValue);
         } else {
-            Serial.println("[LoRa RX] Ignoring BTN message (self echo/loopback)");
+            // Reduce self-echo logging noise
+            static unsigned long btnSelfEchoCount = 0;
+            btnSelfEchoCount++;
+            if (btnSelfEchoCount % 100 == 0) {
+                Serial.printf("[LoRa RX] BTN self-echo count: %lu\n", btnSelfEchoCount);
+            }
         }
         messageProcessed = true;
     }
@@ -232,16 +256,17 @@ bool updateButtonState(ButtonState& btn) {
             btn.pressTime = millis();
             lastChangeTime = millis();
         } else {
-            if (millis() - btn.pressTime < 500 && btn.actionFunc) {
+            // Only call action functions when in MENU state
+            if (millis() - btn.pressTime < 500 && btn.actionFunc && state == MENU) {
                 btn.actionFunc();
             }
             lastChangeTime = 0;
         }
     }
     
-    // Handle button repeat for long press
+    // Handle button repeat for long press - only in MENU state
     if (btn.currentState == LOW && millis() - btn.pressTime >= 500 && 
-        millis() - lastChangeTime > Config::REPEAT_MS && btn.actionFunc) {
+        millis() - lastChangeTime > Config::REPEAT_MS && btn.actionFunc && state == MENU) {
         btn.actionFunc();
         lastChangeTime = millis();
     }
@@ -269,7 +294,6 @@ void registerTripleTap() {
 void incPct() {
     if (targetPct < 100) {
         targetPct += Config::PERCENTAGE_STEP;
-        drawMenu();
         Serial.printf("INC → %d\n", targetPct);
     }
 }
@@ -277,7 +301,6 @@ void incPct() {
 void decPct() {
     if (targetPct > 0) {
         targetPct -= Config::PERCENTAGE_STEP;
-        drawMenu();
         Serial.printf("DEC → %d\n", targetPct);
     }
 }
@@ -471,6 +494,7 @@ void loop() {
             
             // Menu timeout check
             if (millis() - lastActivity > Config::MENU_TIMEOUT_MS) {
+                Serial.printf("[Remote] Menu timeout - sending VAL message with %d%% to main\n", targetPct);
                 sendPct(targetPct);
                 state = START;
                 drawStart();

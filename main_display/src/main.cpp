@@ -175,6 +175,7 @@ void handleDisplayUpdates(bool stopPressed) {
   static bool flashState = false;
   static unsigned long lastFlashTime = 0;
   static bool wasStopFlashing = false;
+  static int lastSentDisplayPct = -1; // Track last sent percentage to avoid duplicates
 
   if (stopPressed) {
     unsigned long now = millis();
@@ -201,8 +202,13 @@ void handleDisplayUpdates(bool stopPressed) {
         int dispPct = state.getDisplayedPercentage();
         display.update(dispPct);
         
-        // Send display percentage to remote via LoRa
-        loraManager.sendDisplayPercentage(dispPct);
+        // Always send display percentage to remote via LoRa when it changes
+        // Main is authoritative, so remote should always sync to main's value
+        if (dispPct != lastSentDisplayPct) {
+            Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", dispPct);
+            loraManager.sendDisplayPercentage(dispPct);
+            lastSentDisplayPct = dispPct;
+        }
     }
   }
 }

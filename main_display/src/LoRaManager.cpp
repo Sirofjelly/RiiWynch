@@ -113,8 +113,7 @@ void LoRaManager::sendDisplayPercentage(int percentage) {
                 lastSentDisplayPct = percentage;
                 waitingForAck = true;
                 lastSendTime = millis();
-                Serial.print("[LoRa TX to Remote] ");
-                Serial.println(txBuf);
+                Serial.printf("[LoRa TX to Remote] DSP,%d,%d (new value)\n", DEVICE_ID, percentage);
             }
             restartReceive();
             xSemaphoreGive(loraMutex);
@@ -125,8 +124,7 @@ void LoRaManager::sendDisplayPercentage(int percentage) {
             snprintf(txBuf, sizeof(txBuf), "DSP,%d,%d", DEVICE_ID, lastSentDisplayPct);
             if (transmitMessage(txBuf)) {
                 lastSendTime = millis();
-                Serial.print("[LoRa TX to Remote - RESEND] ");
-                Serial.println(txBuf);
+                Serial.printf("[LoRa TX to Remote - RESEND] DSP,%d,%d\n", DEVICE_ID, lastSentDisplayPct);
             }
             restartReceive();
             xSemaphoreGive(loraMutex);
@@ -194,7 +192,13 @@ void LoRaManager::parseMessage(const char* message) {
     int dspPct = -1;
     if (!messageProcessed && sscanf(message, "DSP,%d,%d", &dspSrcId, &dspPct) == 2) {
         if (dspSrcId == DEVICE_ID) {
-            Serial.println("[LoRa RX] Ignoring DSP message (self echo/loopback)");
+            // Self echo/loopback - silently ignore (no logging to reduce noise)
+            static unsigned long selfEchoCount = 0;
+            selfEchoCount++;
+            // Only log occasionally for debugging purposes
+            if (selfEchoCount % 100 == 0) {
+                Serial.printf("[LoRa RX] Self-echo count: %lu\n", selfEchoCount);
+            }
         } else {
             Serial.println("[LoRa RX] Ignoring DSP message (not for this device)");
         }
@@ -212,9 +216,19 @@ void LoRaManager::parseMessage(const char* message) {
 void LoRaManager::handleVALMessage(int percentage) {
     // Only process VAL messages if remote is connected
     if (heartbeatManager && heartbeatManager->isRemoteConnected()) {
+        Serial.printf("[LoRa RX] VAL message: %d%%, updating main state\n", percentage);
+        
+        // Main is the authority - update its state first
         state.setDirectPercentage(percentage); // Set both target and displayed immediately
         display.update(percentage); // Update display immediately
-        sendACK(percentage); // Send ACK back to remote
+        
+        // Send ACK to acknowledge receipt
+        sendACK(percentage);
+        
+        // Send DSP to update remote's display (main is authoritative)
+        // Use a small delay to avoid collision with ACK
+        delay(10);
+        sendDisplayPercentage(percentage);
     } else {
         Serial.println("[LoRa RX] Ignored VAL, remote not connected.");
     }
