@@ -21,6 +21,7 @@ void parseLoRaMessage(const char* buffer);
 void registerTripleTap();
 void heartbeatTask(void *parameter);
 bool transmitLoRaMessage(const char* format, ...);
+void drawSignalStrengthBars(int x, int y, float rssi); // Forward declaration
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -107,6 +108,7 @@ unsigned long tapTimes[3] = {0, 0, 0};
 char txBuf[32];
 uint16_t pktCnt = 0;
 static bool lastReportedAnyPressedState = false;
+float currentRSSI = 0.0f; // Variable to store current RSSI
 
 // ─── State for VAL message ACK and Resend ───
 static bool waitingForVAL_ACK = false;
@@ -396,6 +398,17 @@ void drawStart() {
     u8g2.setFont(u8g2_font_6x10_tf);
     u8g2.drawStr(6, 13, pctBuf);
 
+    // Display RSSI in the middle
+    char rssiBuf[10];
+    sprintf(rssiBuf, "%.0fdBm", currentRSSI);
+    u8g2.setFont(u8g2_font_6x10_tf);
+    int rssiWidth = u8g2.getStrWidth(rssiBuf);
+    int rssiX = (128 - rssiWidth - 20) / 2; // Adjusted X to make space for bars
+    u8g2.drawStr(rssiX, 13, rssiBuf);
+
+    // Draw signal strength bars next to RSSI
+    drawSignalStrengthBars(rssiX + rssiWidth + 5, 13, currentRSSI);
+
     // Display battery voltage on the right side
     char buf[8];
     sprintf(buf, "%.2fV", readBattery() / 1000.0);
@@ -403,6 +416,34 @@ void drawStart() {
     u8g2.drawStr(128 - u8g2.getStrWidth(buf) - 6, 13, buf);
     
     u8g2.sendBuffer();
+}
+
+// Function to draw signal strength bars
+void drawSignalStrengthBars(int x, int y, float rssi) {
+    int barWidth = 4;
+    int barSpacing = 2;
+    int maxHeight = 8; // Max height of the tallest bar
+
+    // Bar 1 (shortest)
+    int bar1Height = 0;
+    if (rssi > -105) { // Weakest signal for 1 bar
+        bar1Height = maxHeight / 3;
+    }
+    u8g2.drawBox(x, y - bar1Height, barWidth, bar1Height);
+
+    // Bar 2 (medium)
+    int bar2Height = 0;
+    if (rssi > -90) { // Medium signal for 2 bars
+        bar2Height = (maxHeight * 2) / 3;
+    }
+    u8g2.drawBox(x + barWidth + barSpacing, y - bar2Height, barWidth, bar2Height);
+
+    // Bar 3 (tallest)
+    int bar3Height = 0;
+    if (rssi > -75) { // Strongest signal for 3 bars
+        bar3Height = maxHeight;
+    }
+    u8g2.drawBox(x + (barWidth + barSpacing) * 2, y - bar3Height, barWidth, bar3Height);
 }
 
 void drawMenu() {
@@ -504,6 +545,7 @@ void loop() {
             if (radio.readData((uint8_t*)loraRxBuf, readLen) == RADIOLIB_ERR_NONE) {
                 loraRxBuf[readLen] = '\0';
                 parseLoRaMessage(loraRxBuf);
+                currentRSSI = radio.getRSSI(); // Update RSSI
             }
 
             radio.startReceive();
