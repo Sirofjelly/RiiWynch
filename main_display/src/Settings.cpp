@@ -3,6 +3,7 @@
 #include "StartupManager.h"
 #include "Relays.h"
 #include "StateManager.h"
+#include "Settings.h"
 
 // Forward declarations of functions
 void loadSettings();
@@ -23,7 +24,6 @@ int chokeAngle = 55;
 int brakeAngle = 55;
 unsigned long stopCooldownDuration = 3000;
 bool manualMode = false;
-StateManager state;
 
 // Define global variables for profile management
 const int totalProfiles = 4; // Updated to 4 profiles

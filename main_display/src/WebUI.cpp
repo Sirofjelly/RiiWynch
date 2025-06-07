@@ -27,8 +27,6 @@ extern int currentProfile; // Use the `extern` declaration from Settings.h
 extern DisplayManager display;
 extern const char* modeNames[4];
 
-const int totalProfiles = 3; // Example: 3 profiles
-
 void handleRoot() {
   if (manualMode) currentProfile = 3;
   loadSettingsForProfile(currentProfile); // Always load current profile's values before rendering

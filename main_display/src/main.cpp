@@ -7,7 +7,6 @@
 #include "WebUI.h"
 #include "DisplayManager.h"
 #include "StateManager.h"
-#include "ButtonManager.h"
 #include "Settings.h"  // 🆕 Include for loadSettings()
 #include "LoRaManager.h"
 #include "HeartbeatManager.h"
@@ -16,7 +15,7 @@
 #include <RadioLib.h>
 #include <FreeRTOS.h>
 #include <semphr.h>
-#include <RiiWynchInput/Button.h> // Include the new button library
+#include "Button.h"
 
 // === PROFILING SYSTEM ===
 #define ENABLE_PROFILING 1  // Set to 0 to disable profiling

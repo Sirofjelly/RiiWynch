@@ -66,4 +66,8 @@ void StateManager_remote::resetMenuActivityTimer() {
 
 bool StateManager_remote::isMenuTimedOut(unsigned long timeout) const {
     return millis() - _lastActivityTime > timeout;
+}
+
+void StateManager_remote::setTargetPercentage(int percentage) {
+    _targetPercentage = percentage;
 } 

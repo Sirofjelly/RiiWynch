@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include "StateManager.h"
 #include "DisplayManager.h"
-#include <RiiWynchInput/Button.h>
+#include "Button.h"
 
 class ProfileManager {
 public:
@@ -32,7 +32,17 @@ private:
     bool profileSwitchComboActive;
     unsigned long profileSwitchDebounceTime;
     static const unsigned long PROFILE_SWITCH_DEBOUNCE = 500; // ms
-    
+
+    // === MISSING MEMBERS ADDED ===
+    int currentProfileIndex; // Used in constructor
+    int currentProfile;      // Used for profile tracking
+    bool manualMode;         // Used for manual mode tracking
+    bool upButtonWasPressed = false;
+    bool downButtonWasPressed = false;
+    unsigned long lastButtonCheckTime = 0;
+    static const unsigned long MODE_SWITCH_HOLD_TIME = 2000; // ms, adjust as needed
+    // =============================
+
     void loadProfile(int profileIndex);
     void showModeDisplay();
 }; 

@@ -2,7 +2,7 @@
 #include <Wire.h>
 #include <FreeRTOS.h>
 #include "LoRaManager_remote.h"
-#include <RiiWynchInput/Button.h>
+#include "Button.h"
 #include "DisplayManager_remote.h"
 #include "StateManager_remote.h"
 
@@ -42,6 +42,7 @@ TaskHandle_t heartbeatTaskHandle = NULL;
 // ─── Pins ───
 #define ADC_CTRL 37
 #define VEXT     21
+#define VBAT     2 // Battery voltage pin for Heltec WiFi LoRa 32 V3
 
 // ─── Application State ───
 static bool lastReportedAnyPressedState = false;
@@ -86,7 +87,7 @@ void registerTripleTap() {
         tapTimes[0] = tapTimes[1] = tapTimes[2] = 0;
         loraManager.sendButtonPress(true);
         stateManager.switchToMenu();
-        drawMenu();
+        displayManager.drawMenuScreen(stateManager.getShownPercentage());
     }
 }
 

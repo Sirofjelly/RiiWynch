@@ -2,8 +2,8 @@
 
 #include "StateManager.h"
 #include "DisplayManager.h"
-#include <RiiWynchProtocol/LoRaTransceiver.h>
-#include <RiiWynchProtocol/Protocol.h>
+#include "LoRaTransceiver.h"
+#include "Protocol.h"
 
 class HeartbeatManager; // Forward declaration
 

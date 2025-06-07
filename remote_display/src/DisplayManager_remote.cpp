@@ -1,5 +1,5 @@
 #include "DisplayManager_remote.h"
-#include <RiiWynchDisplay/UI.h>
+#include "UI.h"
 
 DisplayManager_remote::DisplayManager_remote() 
     : u8g2(U8G2_R0, U8X8_PIN_NONE, 20, 19) {}

@@ -14,6 +14,7 @@ public:
     int getTargetPercentage() const;
     int getShownPercentage() const;
     
+    void setTargetPercentage(int percentage);
     void increasePercentage(int step);
     void decreasePercentage(int step);
 

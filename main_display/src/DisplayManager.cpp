@@ -1,5 +1,5 @@
 #include "DisplayManager.h"
-#include <RiiWynchDisplay/UI.h>
+#include "UI.h"
 #include <string.h>
 
 DisplayManager::DisplayManager()

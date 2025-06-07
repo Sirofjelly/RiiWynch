@@ -1,7 +1,7 @@
 #pragma once
 
-#include <RiiWynchProtocol/LoRaTransceiver.h>
-#include <RiiWynchProtocol/Protocol.h>
+#include "LoRaTransceiver.h"
+#include "Protocol.h"
 
 class LoRaManager_remote {
 public:
