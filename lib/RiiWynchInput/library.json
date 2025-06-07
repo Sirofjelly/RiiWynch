@@ -1,0 +1,14 @@
+{
+  "name": "RiiWynchInput",
+  "version": "1.0.0",
+  "description": "A generic button library for handling press, release, and hold events.",
+  "keywords": "button, input, riiwynch",
+  "authors": [
+    {
+      "name": "Gemini AI Assistant",
+      "email": "no-reply@google.com"
+    }
+  ],
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

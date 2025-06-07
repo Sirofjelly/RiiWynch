@@ -16,6 +16,7 @@
 #include <RadioLib.h>
 #include <FreeRTOS.h>
 #include <semphr.h>
+#include <RiiWynchInput/Button.h> // Include the new button library
 
 // === PROFILING SYSTEM ===
 #define ENABLE_PROFILING 1  // Set to 0 to disable profiling
@@ -58,8 +59,9 @@ unsigned long profileLoopCount = 0;
 
 // Component instances
 DisplayManager display;
-ButtonManager upButton(7, &state, true);
-ButtonManager downButton(40, &state, false);
+Button upButton(7);
+Button downButton(40);
+StateManager state; // Make state a regular instance
 
 // Manager instances
 LoRaManager loraManager(state, display);
@@ -81,6 +83,13 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Starting Setup.");
   
+  // Initialize new buttons with callbacks
+  upButton.onPress([&]() { state.increase(); });
+  upButton.onHold([&]() { state.increase(); }, 100); // 100ms repeat interval
+
+  downButton.onPress([&]() { state.decrease(); });
+  downButton.onHold([&]() { state.decrease(); }, 100);
+
   // Initialize existing subsystems
   setupButtons();
   setupRelays();
@@ -120,6 +129,10 @@ void setup() {
 
 void loop() {
   PROFILE_LOOP_START();
+
+  // Update new buttons
+  upButton.update();
+  downButton.update();
 
   // Read button states
   bool startPressed = isStartPressed();

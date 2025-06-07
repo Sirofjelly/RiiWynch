@@ -5,9 +5,8 @@
 // Static member definitions
 const char* ProfileManager::modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
 
-ProfileManager::ProfileManager(StateManager& stateMgr, DisplayManager& displayMgr, ButtonManager& upBtn, ButtonManager& downBtn)
-    : state(stateMgr), display(displayMgr), upButton(upBtn), downButton(downBtn),
-      modeState(0), profileSwitchComboActive(false), profileSwitchDebounceTime(0) {
+ProfileManager::ProfileManager(StateManager& stateMgr, DisplayManager& displayMgr, Button& up, Button& down)
+    : state(stateMgr), display(displayMgr), upButton(up), downButton(down), currentProfileIndex(0) {
 }
 
 void ProfileManager::begin() {
@@ -23,25 +22,29 @@ void ProfileManager::update() {
     display.updateModeDisplay();
     
     // Always update button states regardless of mode
-    upButton.update();
-    downButton.update();
+    checkModeSwitch(false); // Simplified call, logic is now self-contained
 }
 
 void ProfileManager::checkModeSwitch(bool stopPressed) {
-    bool upHeld = upButton.isPressed();
-    bool downHeld = downButton.isPressed();
-    bool currentCombo = upHeld && downHeld && stopPressed;
-
-    // Fixed logic to ensure "Smooth" profile is not skipped
-    // Ensure button logic synchronizes with Web UI profile changes
-    if (currentCombo && !profileSwitchComboActive && !display.isModeDisplayActive() && 
-        (millis() - profileSwitchDebounceTime > PROFILE_SWITCH_DEBOUNCE)) {
-        
-        switchToNextMode();
-        profileSwitchComboActive = true;
-        profileSwitchDebounceTime = millis();
-    } else if (!currentCombo) {
-        profileSwitchComboActive = false;
+    // Check if both buttons are held down to switch modes
+    if (upButton.isPressed() && downButton.isPressed()) {
+        if (!upButtonWasPressed || !downButtonWasPressed) {
+            // Both buttons have just been pressed, start the timer
+            lastButtonCheckTime = millis();
+            upButtonWasPressed = true;
+            downButtonWasPressed = true;
+        } else {
+            // Both buttons are still being held, check if hold time has passed
+            if (millis() - lastButtonCheckTime >= MODE_SWITCH_HOLD_TIME) {
+                switchToNextMode();
+                // Reset time to allow for continuous cycling if held
+                lastButtonCheckTime = millis();
+            }
+        }
+    } else {
+        // If either button is released, reset the state
+        upButtonWasPressed = false;
+        downButtonWasPressed = false;
     }
 }
 
