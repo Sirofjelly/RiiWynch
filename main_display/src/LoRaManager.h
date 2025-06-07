@@ -1,11 +1,9 @@
-#ifndef LORA_MANAGER_H
-#define LORA_MANAGER_H
+#pragma once
 
-#include <RadioLib.h>
-#include <FreeRTOS.h>
-#include <semphr.h>
 #include "StateManager.h"
 #include "DisplayManager.h"
+#include <RiiWynchProtocol/LoRaTransceiver.h>
+#include <RiiWynchProtocol/Protocol.h>
 
 class HeartbeatManager; // Forward declaration
 
@@ -16,54 +14,22 @@ public:
     bool begin();
     void update();
     void sendDisplayPercentage(int percentage);
-    void sendACK(int percentage);
-    bool isMessageReady();
     void setHeartbeatManager(HeartbeatManager* hbMgr);
-    SemaphoreHandle_t getMutex() { return loraMutex; }
-    static const int DEVICE_ID;
     
 private:
-    // LoRa hardware
-    Module* mod;
-    SX1262* radio;
-    
-    // References to other managers
+    void handleMessage(const RiiWynch::Protocol::Message& msg);
+    void sendAck(RiiWynch::Protocol::MessageType type, uint8_t percentage);
+
+    LoRaTransceiver transceiver;
     StateManager& state;
     DisplayManager& display;
     HeartbeatManager* heartbeatManager;
     
-    // Communication state
-    char rxBuffer[64];
-    volatile bool messageReady;
-    int lastSentDisplayPct;
-    bool waitingForAck;
-    unsigned long lastSendTime;
-    static const unsigned long RESEND_INTERVAL = 200; // ms
+    uint16_t packetCounter = 0;
     
-    // Thread safety
-    SemaphoreHandle_t loraMutex;
-    
-    // Message parsing
-    void parseMessage(const char* message);
-    void handleVALMessage(int percentage);
-    void handleACKMessage(int percentage);
-    void handleHeartbeat();
-    void handleButtonMessage(int value);
-    
-    // Transmission helpers
-    bool transmitMessage(const char* message);
-    void restartReceive();
-    
-    // Interrupt handler
-    static void IRAM_ATTR onReceive();
-    static LoRaManager* instance; // For interrupt handler
-    
-    // Constants
-    static const float FREQUENCY;
-    static const int OUTPUT_POWER;
-    static const int SPREADING_FACTOR;
-    static const int CODING_RATE;
-    static const float BANDWIDTH;
-};
-
-#endif // LORA_MANAGER_H 
+    // State for resending DSP messages
+    bool waitingForDspAck = false;
+    uint8_t lastSentDspPct = 0;
+    unsigned long lastDspSendTime = 0;
+    static const unsigned long DSP_RESEND_INTERVAL = 200; // ms
+}; 
