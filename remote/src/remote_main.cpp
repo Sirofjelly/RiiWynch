@@ -4,6 +4,7 @@
 #include "LoRaManager_remote.h"
 #include <RiiWynchInput/Button.h>
 #include "DisplayManager_remote.h"
+#include "StateManager_remote.h"
 
 // ─────────────────────────────────────────
 //         BASIC FORWARD DECLARATIONS
@@ -31,6 +32,7 @@ namespace Config {
 // ─── Managers and Components ───
 DisplayManager_remote displayManager;
 LoRaManager_remote loraManager;
+StateManager_remote stateManager;
 Button upButton(7);
 Button downButton(4);
 
@@ -41,18 +43,10 @@ TaskHandle_t heartbeatTaskHandle = NULL;
 #define ADC_CTRL 37
 #define VEXT     21
 
-// ─── States ───
-enum State { START, MENU };
-State state = START;
-
 // ─── Application State ───
-int targetPct = 0, shownPct = 0;
-unsigned long lastChangeTime = 0;
-unsigned long lastUpdateTime = 0;
-unsigned long lastActivity = 0;
-unsigned long lastStartUpdate = 0;
 static bool lastReportedAnyPressedState = false;
 float currentRSSI = 0.0f;
+unsigned long lastStartUpdate = 0;
 
 // ─────────────────────────────────────────
 //           LORA CALLBACKS
@@ -61,10 +55,10 @@ float currentRSSI = 0.0f;
 void onLoraDisplayUpdate(int percentage, float rssi) {
     currentRSSI = rssi;
     Serial.printf("[LORA CB] DSP: %d%% (current state: %s, targetPct: %d, shownPct: %d)\n", 
-                 percentage, (state == START) ? "START" : "MENU", targetPct, shownPct);
+                 percentage, (stateManager.getState() == StateManager_remote::State::START) ? "START" : "MENU", stateManager.getTargetPercentage(), stateManager.getShownPercentage());
 
-    if (state != MENU) {
-        targetPct = shownPct = percentage;
+    if (stateManager.getState() != StateManager_remote::State::MENU) {
+        stateManager.setTargetPercentage(percentage);
         Serial.printf("[Remote] Updated display to %d%% from main\n", percentage);
     } else {
         Serial.println("[Remote] Ignoring DSP update value - in MENU mode, but ACK sent.");
@@ -91,24 +85,19 @@ void registerTripleTap() {
         Serial.println("TRIPLE PRESS → MENU");
         tapTimes[0] = tapTimes[1] = tapTimes[2] = 0;
         loraManager.sendButtonPress(true);
-        state = MENU;
-        lastActivity = millis();
+        stateManager.switchToMenu();
         drawMenu();
     }
 }
 
 void incPct() {
-    if (targetPct < 100) {
-        targetPct = min(100, targetPct + Config::PERCENTAGE_STEP);
-        Serial.printf("INC → %d\n", targetPct);
-    }
+    stateManager.increasePercentage(Config::PERCENTAGE_STEP);
+    Serial.printf("INC → %d\n", stateManager.getTargetPercentage());
 }
 
 void decPct() {
-    if (targetPct > 0) {
-        targetPct = max(0, targetPct - Config::PERCENTAGE_STEP);
-        Serial.printf("DEC → %d\n", targetPct);
-    }
+    stateManager.decreasePercentage(Config::PERCENTAGE_STEP);
+    Serial.printf("DEC → %d\n", stateManager.getTargetPercentage());
 }
 
 // ─────────────────────────────────────────
@@ -128,11 +117,11 @@ void heartbeatTask(void *parameter) {
 //              DISPLAY LOGIC
 // ─────────────────────────────────────────
 void drawMenu() {
-    displayManager.drawMenuScreen(shownPct);
+    displayManager.drawMenuScreen(stateManager.getShownPercentage());
 }
 
 void drawStart() {
-    displayManager.drawStartScreen(shownPct, currentRSSI, readBattery());
+    displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery());
 }
 
 uint16_t readBattery() {
@@ -169,21 +158,21 @@ void setup() {
 
     // Setup button callbacks
     upButton.onPress([]() {
-        if (state == START) {
+        if (stateManager.getState() == StateManager_remote::State::START) {
             registerTripleTap();
-        } else if (state == MENU) {
+        } else if (stateManager.getState() == StateManager_remote::State::MENU) {
             incPct();
         }
     });
     upButton.onHold([]() {
-        if (state == MENU) incPct();
+        if (stateManager.getState() == StateManager_remote::State::MENU) incPct();
     }, 200);
 
     downButton.onPress([]() {
-        if (state == MENU) decPct();
+        if (stateManager.getState() == StateManager_remote::State::MENU) decPct();
     });
     downButton.onHold([]() {
-        if (state == MENU) decPct();
+        if (stateManager.getState() == StateManager_remote::State::MENU) decPct();
     }, 200);
 
     xTaskCreatePinnedToCore(heartbeatTask, "HeartbeatTask", 2048, NULL, 2, &heartbeatTaskHandle, 0);
@@ -200,13 +189,11 @@ void setup() {
 // ─────────────────────────────────────────
 void loop() {
     loraManager.update();
-
-    // Update buttons
     upButton.update();
     downButton.update();
 
-    switch (state) {
-        case START: {
+    switch (stateManager.getState()) {
+        case StateManager_remote::State::START: {
             bool currentAnyPressed = upButton.isPressed() || downButton.isPressed();
             if (currentAnyPressed != lastReportedAnyPressedState) {
                 loraManager.sendButtonPress(currentAnyPressed);
@@ -220,28 +207,22 @@ void loop() {
             break;
         }
 
-        case MENU: {
+        case StateManager_remote::State::MENU: {
             if (upButton.isPressed() || downButton.isPressed()) {
-                lastActivity = millis();
+                stateManager.resetMenuActivityTimer();
             }
             
-            if (millis() - lastActivity > Config::MENU_TIMEOUT_MS) {
-                Serial.printf("[Remote] Menu timeout - sending VAL message with %d%% to main\n", targetPct);
-                loraManager.sendValue(targetPct);
-                state = START;
+            if (stateManager.isMenuTimedOut(Config::MENU_TIMEOUT_MS)) {
+                Serial.printf("[Remote] Menu timeout - sending VAL message with %d%% to main\n", stateManager.getTargetPercentage());
+                loraManager.sendValue(stateManager.getTargetPercentage());
+                stateManager.switchToStart();
                 drawStart();
                 lastStartUpdate = millis();
                 break;
             }
 
-            if (millis() - lastUpdateTime > Config::SMOOTH_UPDATE_MS && shownPct != targetPct) {
-                int step = (shownPct < targetPct) ? Config::SMOOTH_STEP : -Config::SMOOTH_STEP;
-                shownPct += step;
-                if ((step > 0 && shownPct > targetPct) || (step < 0 && shownPct < targetPct)) {
-                    shownPct = targetPct;
-                }
+            if (stateManager.updateShownPercentage(Config::SMOOTH_STEP, Config::SMOOTH_UPDATE_MS)) {
                 drawMenu();
-                lastUpdateTime = millis();
             }
             break;
         }
