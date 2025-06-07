@@ -1,21 +1,17 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <U8g2lib.h>
 #include <FreeRTOS.h>
 #include "LoRaManager_remote.h"
 #include <RiiWynchInput/Button.h>
+#include "DisplayManager_remote.h"
 
 // ─────────────────────────────────────────
 //         BASIC FORWARD DECLARATIONS
 // ─────────────────────────────────────────
-void drawStart();
-void drawMenu();
 void incPct();
 void decPct();
 uint16_t readBattery();
-void registerTripleTap();
 void heartbeatTask(void *parameter);
-void drawSignalStrengthBars(int x, int y, float rssi);
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -32,13 +28,9 @@ namespace Config {
     static const int SMOOTH_STEP = 5;
 }
 
-// ─── Display ───
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, 20, 19);
-
-// ─── LoRa Manager ───
+// ─── Managers and Components ───
+DisplayManager_remote displayManager;
 LoRaManager_remote loraManager;
-
-// Create Button instances
 Button upButton(7);
 Button downButton(4);
 
@@ -133,79 +125,14 @@ void heartbeatTask(void *parameter) {
 }
 
 // ─────────────────────────────────────────
-//              DISPLAY FUNCTIONS
+//              DISPLAY LOGIC
 // ─────────────────────────────────────────
-void drawFrame() {
-    const int t = 3, r = 8;
-    u8g2.drawRBox(0, 0, 128, 64, r);
-    u8g2.setDrawColor(0);
-    u8g2.drawRBox(t, t, 128 - 2 * t, 64 - 2 * t, r - t);
-    u8g2.setDrawColor(1);
-}
-
-void drawBar(int pct) {
-    int x = 6, y = 51, h = 6, maxW = 116;
-    int w = constrain(pct, 0, 100) * maxW / 100;
-    int rad = (w < 6) ? w / 2 : 3;
-    if (w > 0) u8g2.drawRBox(x, y, w, h, rad);
-    u8g2.drawRFrame(x - 1, y - 1, maxW + 2, h + 2, 3);
+void drawMenu() {
+    displayManager.drawMenuScreen(shownPct);
 }
 
 void drawStart() {
-    u8g2.clearBuffer(); 
-    drawFrame();
-    u8g2.setFont(u8g2_font_logisoso28_tf);
-    int w = u8g2.getStrWidth("START");
-    u8g2.drawStr((128 - w) / 2, 46, "START");
-
-    char pctBuf[8];
-    sprintf(pctBuf, "%d%%", shownPct);
-    u8g2.setFont(u8g2_font_6x10_tf);
-    u8g2.drawStr(6, 13, pctBuf);
-
-    char rssiBuf[10];
-    sprintf(rssiBuf, "%.0fdBm", currentRSSI);
-    u8g2.setFont(u8g2_font_6x10_tf);
-    int rssiWidth = u8g2.getStrWidth(rssiBuf);
-    int rssiX = (128 - rssiWidth - 20) / 2;
-    u8g2.drawStr(rssiX, 13, rssiBuf);
-
-    drawSignalStrengthBars(rssiX + rssiWidth + 5, 13, currentRSSI);
-
-    char buf[8];
-    sprintf(buf, "%.2fV", readBattery() / 1000.0);
-    u8g2.setFont(u8g2_font_6x10_tf);
-    u8g2.drawStr(128 - u8g2.getStrWidth(buf) - 6, 13, buf);
-    
-    u8g2.sendBuffer();
-}
-
-void drawSignalStrengthBars(int x, int y, float rssi) {
-    int barWidth = 4;
-    int barSpacing = 2;
-    int maxHeight = 8;
-
-    int bar1Height = (rssi > -105) ? maxHeight / 3 : 0;
-    u8g2.drawBox(x, y - bar1Height, barWidth, bar1Height);
-
-    int bar2Height = (rssi > -90) ? (maxHeight * 2) / 3 : 0;
-    u8g2.drawBox(x + barWidth + barSpacing, y - bar2Height, barWidth, bar2Height);
-
-    int bar3Height = (rssi > -75) ? maxHeight : 0;
-    u8g2.drawBox(x + (barWidth + barSpacing) * 2, y - bar3Height, barWidth, bar3Height);
-}
-
-void drawMenu() {
-    u8g2.clearBuffer(); 
-    drawFrame();
-    char txt[6];
-    if (shownPct == 0) strcpy(txt, "STOP");
-    else sprintf(txt, "%d%%", shownPct);
-    u8g2.setFont(u8g2_font_logisoso42_tf);
-    int w = u8g2.getStrWidth(txt);
-    u8g2.drawStr((128 - w) / 2, 47, txt);
-    drawBar(shownPct);
-    u8g2.sendBuffer();
+    displayManager.drawStartScreen(shownPct, currentRSSI, readBattery());
 }
 
 uint16_t readBattery() {
@@ -230,7 +157,7 @@ void setup() {
     pinMode(VEXT, OUTPUT); digitalWrite(VEXT, LOW);
     analogReadResolution(12);
 
-    u8g2.begin();
+    displayManager.begin();
     drawStart();
 
     if (!loraManager.begin()) {

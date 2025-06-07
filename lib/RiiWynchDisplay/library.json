@@ -1,0 +1,17 @@
+{
+  "name": "RiiWynchDisplay",
+  "version": "1.0.0",
+  "description": "A shared library for drawing UI components on an OLED display.",
+  "keywords": "display, ui, oled, u8g2, riiwynch",
+  "authors": [
+    {
+      "name": "Gemini AI Assistant",
+      "email": "no-reply@google.com"
+    }
+  ],
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": {
+    "olikraus/U8g2": "^2.34.17"
+  }
+}
