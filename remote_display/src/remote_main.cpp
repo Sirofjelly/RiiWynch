@@ -49,9 +49,8 @@ Button downButton(4);
 TaskHandle_t heartbeatTaskHandle = NULL;
 
 // ─── Pins ───
-#define ADC_CTRL 37
 #define VEXT     21
-#define VBAT     2 // Battery voltage pin for Heltec WiFi LoRa 32 V3
+#define VBAT     1 // Battery voltage pin for Heltec WiFi LoRa 32 V3 is GPIO1
 
 // ─── Application State ───
 float currentRSSI = 0.0f;
@@ -184,16 +183,26 @@ void drawForState() {
             break;
     }
 }
-
 uint16_t readBattery() {
-    const float VREF = 3.3;
-    const int MAX = 4095;
-    const float DIV = 5.15;
-    digitalWrite(ADC_CTRL, LOW); 
-    delay(20);
+    const float VREF = 3.3;        // Reference voltage for ADC
+    const int MAX = 4095;          // 12-bit ADC resolution
+    const float DIV = 2.0;         // Voltage divider ratio (2x100k resistors on Heltec board)
+    const float MIN_VOLTAGE = 2.5; // Minimum discharge voltage
+    const float MAX_VOLTAGE = 4.2; // Maximum charge voltage
+    
+    // On V3 boards, the battery voltage divider is always connected to GPIO1.
+    // No ADC_CTRL pin is needed.
     int raw = analogRead(VBAT);
-    digitalWrite(ADC_CTRL, HIGH);
-    return (uint16_t)((raw * VREF / MAX) * DIV * 1000);
+    
+    // Calculate actual voltage
+    float voltage = (raw * VREF / MAX) * DIV;
+    
+    // Calculate percentage based on voltage range
+    float percentage = (voltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE) * 100.0;
+    percentage = constrain(percentage, 0.0, 100.0);
+    
+    // Return voltage in millivolts
+    return (uint16_t)(voltage * 1000);
 }
 
 // ─────────────────────────────────────────
@@ -203,7 +212,6 @@ void setup() {
     Serial.begin(115200);
     Serial.println("Starting Setup of Remote...");
 
-    pinMode(ADC_CTRL, OUTPUT); digitalWrite(ADC_CTRL, HIGH);
     pinMode(VEXT, OUTPUT); digitalWrite(VEXT, LOW);
     analogReadResolution(12);
 
