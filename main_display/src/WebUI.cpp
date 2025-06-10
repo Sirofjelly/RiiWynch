@@ -29,24 +29,21 @@ extern const char* modeNames[4];
 
 void handleRoot() {
   if (manualMode) currentProfile = 3;
-  loadSettingsForProfile(currentProfile); // Always load current profile's values before rendering
-  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-  server.send(200, "text/html", "");
-  const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
-  String html_part1 = R"rawliteral(
+  loadSettingsForProfile(currentProfile); // Always load current profile's values
+
+  String html_content = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
   <title>RiiWynch Settings</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
   <style>
-    body { background-color: #111; color: #00ffff; font-family: 'Orbitron', sans-serif; text-align: center; padding: 36px; }
+    body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; }
     h2 { font-size: 3.3em; margin-bottom: 35px; }
     .status-message { background-color: rgba(0, 255, 0, 0.2); color: #00ff00; padding: 18px; margin: 24px auto; border-radius: 13px; border: 2.75px solid #00ff00; max-width: 90%; font-size: 2em; display: none; }
     .form-row { display: flex; align-items: center; justify-content: flex-start; margin: 18px auto; max-width: 900px; }
     label { display: inline-block; width: 500px; text-align: right; margin-right: 40px; font-size: 2em; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    input[type="text"] { width: 5ch; min-width: 5ch; max-width: 5ch; padding: 11px; background: transparent; border: 2.75px solid #ff00ff; color: #00ffff; font-family: 'Orbitron', sans-serif; font-size: 2em; border-radius: 13px; text-align: center; margin-left: 0; }
-    .button { font-size: 2em; width: 260px; min-width: 10ch; max-width: 20ch; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: 'Orbitron', sans-serif; border-radius: 13px; margin: 10px 0 26px 0; cursor: pointer; display: inline-block; white-space: nowrap; }
+    input[type="text"] { width: 5ch; min-width: 5ch; max-width: 5ch; padding: 11px; background: transparent; border: 2.75px solid #ff00ff; color: #00ffff; font-family: sans-serif; font-size: 2em; border-radius: 13px; text-align: center; margin-left: 0; }
+    .button { font-size: 2em; width: 260px; min-width: 10ch; max-width: 20ch; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: sans-serif; border-radius: 13px; margin: 10px 0 26px 0; cursor: pointer; display: inline-block; white-space: nowrap; }
     .mode-row { font-size: 2em; margin: 26px auto 0 auto; display: flex; justify-content: center; align-items: center; gap: 16px; }
     .mode-btn-row { display: flex; justify-content: center; margin: 10px auto 26px auto; }
     #profileInput { width: 260px; min-width: 10ch; max-width: 20ch; font-size: 2em; }
@@ -56,29 +53,25 @@ void handleRoot() {
   <h2>RiiWynch Engine Settings</h2>
   <div id="statusMessage" class="status-message"></div>
   <div class="mode-row"><input type="text" id="profileInput" value=")rawliteral";
-  html_part1 += modeNames[manualMode ? 3 : currentProfile];
-  html_part1 += R"rawliteral(" readonly></div>
+  
+  html_content += modeNames[manualMode ? 3 : currentProfile];
+  
+  html_content += R"rawliteral(" readonly></div>
   <div class="mode-btn-row"><button type="button" class="button" onclick="switchProfile()">Change Mode</button></div>
-  <form id="settingsForm" onsubmit="return false;">)rawliteral";
-  server.sendContent(html_part1);
+  <form id="settingsForm" onsubmit="return false;">
+)rawliteral";
+
+  html_content += "<div class=\"form-row\"><label>Starter Relay Time (ms):</label><input name=\"starterRelayTime\" type=\"text\" value=\"" + String(starterRelayTime) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Ramp Up Duration (ms):</label><input name=\"rampUpDuration\" type=\"text\" value=\"" + String(rampUpDuration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Ramp-Up Exponent:</label><input name=\"rampUpExponent\" type=\"text\" value=\"" + String(rampUpExponent, 2) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Ramp Down Duration (ms):</label><input name=\"rampDownDuration\" type=\"text\" value=\"" + String(rampDownDuration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Gas Idle Angle (°):</label><input name=\"gasIdleAngle\" type=\"text\" value=\"" + String(gasIdleAngle) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Gas Max Angle (°):</label><input name=\"gasMaxAngle\" type=\"text\" value=\"" + String(gasMaxAngle) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Choke Angle (°):</label><input name=\"chokeAngle\" type=\"text\" value=\"" + String(chokeAngle) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Brake Angle (°):</label><input name=\"brakeAngle\" type=\"text\" value=\"" + String(brakeAngle) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Stop Cooldown (ms):</label><input name=\"stopCooldownDuration\" type=\"text\" value=\"" + String(stopCooldownDuration) + "\"></div>";
   
-  // Second chunk - form fields with values
-  String html_part2 = "";
-  html_part2 += "<div class=\"form-row\"><label>Starter Relay Time (ms):</label><input name=\"starterRelayTime\" type=\"text\" value=\"" + String(starterRelayTime) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Ramp Up Duration (ms):</label><input name=\"rampUpDuration\" type=\"text\" value=\"" + String(rampUpDuration) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Ramp-Up Exponent:</label><input name=\"rampUpExponent\" type=\"text\" value=\"" + String(rampUpExponent, 2) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Ramp Down Duration (ms):</label><input name=\"rampDownDuration\" type=\"text\" value=\"" + String(rampDownDuration) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Gas Idle Angle (°):</label><input name=\"gasIdleAngle\" type=\"text\" value=\"" + String(gasIdleAngle) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Gas Max Angle (°):</label><input name=\"gasMaxAngle\" type=\"text\" value=\"" + String(gasMaxAngle) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Choke Angle (°):</label><input name=\"chokeAngle\" type=\"text\" value=\"" + String(chokeAngle) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Brake Angle (°):</label><input name=\"brakeAngle\" type=\"text\" value=\"" + String(brakeAngle) + "\"></div>";
-  html_part2 += "<div class=\"form-row\"><label>Stop Cooldown (ms):</label><input name=\"stopCooldownDuration\" type=\"text\" value=\"" + String(stopCooldownDuration) + "\"></div>";
-  
-  // Send second chunk
-  server.sendContent(html_part2);
-  
-  // Third chunk - buttons
-  String html_part3 = R"rawliteral(
+  html_content += R"rawliteral(
     <button type="button" class="button" onclick="applySettings()">Apply</button>
     <button type="button" class="button" onclick="saveSettings()">Save</button>
   </form>
@@ -142,8 +135,8 @@ void handleRoot() {
   </script>
 </body>
 </html>)rawliteral";
-  server.sendContent(html_part3);
-  server.sendContent("");
+
+  server.send(200, "text/html", html_content);
 }
 
 void handleSet() {
