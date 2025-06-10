@@ -68,6 +68,20 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
             Serial.printf("[LORA RX] BTN: %s\n", msg.payload.isPressed ? "pressed" : "released");
             break;
 
+        case RiiWynch::Protocol::MessageType::START_MOTOR:
+            Serial.println("[LORA RX] START_MOTOR");
+            _startMotorRequest = true;
+            break;
+
+        case RiiWynch::Protocol::MessageType::STOP_MOTOR:
+            Serial.println("[LORA RX] STOP_MOTOR");
+            _stopMotorRequest = true;
+            break;
+
+        case RiiWynch::Protocol::MessageType::KEEPALIVE:
+            // Also handled implicitly, but good to have an explicit case
+            break;
+
         default:
             Serial.printf("[LORA RX] Unknown message type: %d\n", static_cast<uint8_t>(msg.type));
             break;
@@ -103,4 +117,20 @@ void LoRaManager::sendAck(RiiWynch::Protocol::MessageType type, uint8_t percenta
     } else {
         Serial.printf("[LORA TX] Failed to send ACK for %d%%\n", percentage);
     }
+}
+
+bool LoRaManager::getStartMotorRequest() {
+    if (_startMotorRequest) {
+        _startMotorRequest = false;
+        return true;
+    }
+    return false;
+}
+
+bool LoRaManager::getStopMotorRequest() {
+    if (_stopMotorRequest) {
+        _stopMotorRequest = false;
+        return true;
+    }
+    return false;
 } 

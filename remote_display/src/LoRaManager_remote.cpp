@@ -92,6 +92,36 @@ void LoRaManager_remote::sendHeartbeat() {
     transceiver.transmit(msg);
 }
 
+void LoRaManager_remote::sendStartMotor() {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::START_MOTOR;
+    msg.source = RiiWynch::Protocol::DeviceID::REMOTE;
+    msg.packetCounter = packetCounter++;
+    if (!transceiver.transmit(msg)) {
+        Serial.println("[LORA TX] Failed to send START_MOTOR");
+    }
+}
+
+void LoRaManager_remote::sendStopMotor() {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::STOP_MOTOR;
+    msg.source = RiiWynch::Protocol::DeviceID::REMOTE;
+    msg.packetCounter = packetCounter++;
+    if (!transceiver.transmit(msg)) {
+        Serial.println("[LORA TX] Failed to send STOP_MOTOR");
+    }
+}
+
+void LoRaManager_remote::sendKeepalive() {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::KEEPALIVE;
+    msg.source = RiiWynch::Protocol::DeviceID::REMOTE;
+    msg.packetCounter = packetCounter++;
+    if (!transceiver.transmit(msg)) {
+        Serial.println("[LORA TX] Failed to send KEEPALIVE");
+    }
+}
+
 void LoRaManager_remote::sendAck(RiiWynch::Protocol::MessageType type, uint8_t percentage) {
     RiiWynch::Protocol::Message msg;
     msg.type = type;

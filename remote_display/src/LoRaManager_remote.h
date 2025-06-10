@@ -13,6 +13,9 @@ public:
     void sendValue(uint8_t percentage);
     void sendButtonPress(bool isPressed);
     void sendHeartbeat();
+    void sendStartMotor();
+    void sendStopMotor();
+    void sendKeepalive();
     
     // Callback functions to link with main application logic
     void onDisplayUpdate(void (*callback)(int percentage, float rssi));

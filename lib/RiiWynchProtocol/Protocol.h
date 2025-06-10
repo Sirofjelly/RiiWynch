@@ -12,6 +12,9 @@ enum class MessageType : uint8_t {
     ACK_VAL,
     ACK_DSP,
     BUTTON_PRESS,
+    START_MOTOR,
+    STOP_MOTOR,
+    KEEPALIVE
 };
 
 enum class DeviceID : uint8_t {

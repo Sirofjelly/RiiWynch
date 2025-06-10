@@ -133,6 +133,9 @@ void updateStartup(bool startPressed, bool stopPressed) {
     }
 
     case MANUAL_CONTROL:
+      if (stopPressed) {
+        currentState = IDLE;
+      }
       // In manual mode, servo is only moved by percentage changes elsewhere
       break;
   }

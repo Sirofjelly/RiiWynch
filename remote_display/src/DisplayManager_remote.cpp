@@ -8,14 +8,29 @@ void DisplayManager_remote::begin() {
     u8g2.begin();
 }
 
-void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t battery_mv) {
+void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState) {
     u8g2.clearBuffer();
     RiiWynch::UI::drawFrame(u8g2);
     
     // Title
     u8g2.setFont(u8g2_font_logisoso28_tf);
-    int w = u8g2.getStrWidth("START");
-    u8g2.drawStr((128 - w) / 2, 46, "START");
+    const char* title = "START";
+    switch (currentState) {
+        case StateManager_remote::State::IDLE:
+            title = "IDLE";
+            break;
+        case StateManager_remote::State::ARMING:
+            title = "ARMING";
+            break;
+        case StateManager_remote::State::CRUISING:
+            title = "CRUISE";
+            break;
+        case StateManager_remote::State::MENU: // Should not be drawn via this function, but handle it
+             title = "MENU";
+             break;
+    }
+    int w = u8g2.getStrWidth(title);
+    u8g2.drawStr((128 - w) / 2, 46, title);
 
     // Top status bar
     u8g2.setFont(u8g2_font_6x10_tf);

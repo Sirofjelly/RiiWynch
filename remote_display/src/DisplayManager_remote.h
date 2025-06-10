@@ -1,5 +1,6 @@
 #pragma once
 #include <U8g2lib.h>
+#include "StateManager_remote.h"
 
 class DisplayManager_remote {
 public:
@@ -7,7 +8,7 @@ public:
     
     void begin();
     
-    void drawStartScreen(int percentage, float rssi, uint16_t battery_mv);
+    void drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState);
     void drawMenuScreen(int percentage);
     
 private:

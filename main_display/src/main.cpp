@@ -94,8 +94,8 @@ void loop() {
   downButton.update();
 
   // Read button states
-  bool startPressed = isStartPressed();
-  bool stopPressed  = isStopPressed() || getGlobalStateManager().isEmergencyStopActive();
+  bool startPressed = isStartPressed() || loraManager.getStartMotorRequest();
+  bool stopPressed  = isStopPressed() || getGlobalStateManager().isEmergencyStopActive() || loraManager.getStopMotorRequest();
   bool chokePressed = isChokePressed();
   bool brakePressed = isBrakePressed();
 

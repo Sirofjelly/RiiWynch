@@ -3,12 +3,14 @@
 
 class StateManager_remote {
 public:
-    enum class State { START, MENU };
+    enum class State { IDLE, ARMING, CRUISING, MENU };
 
     StateManager_remote();
 
     State getState() const;
-    void switchToStart();
+    void switchToIdle();
+    void switchToArming();
+    void switchToCruising();
     void switchToMenu();
 
     int getTargetPercentage() const;

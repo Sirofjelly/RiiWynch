@@ -22,11 +22,16 @@ namespace Config {
     static const unsigned long REPEAT_MS = 200;
     static const unsigned long MENU_TIMEOUT_MS = 1500;
     static const unsigned long START_UPDATE_MS = 500;
-    static const unsigned long HEARTBEAT_INTERVAL = 500;
     static const unsigned long TRIPLE_TAP_WINDOW = 1500;
     static const int PERCENTAGE_STEP = 5;
     static const int SMOOTH_UPDATE_MS = 50;
     static const int SMOOTH_STEP = 5;
+    
+    // New constants for dead man's switch logic
+    static const unsigned long ARMING_DURATION_MS = 2000;
+    static const unsigned long KEEPALIVE_INTERVAL_MS = 500;
+    static const unsigned long NO_BUTTON_TIMEOUT_MS = 1000;
+    static const unsigned long HEARTBEAT_INTERVAL_MS = 500;
 }
 
 // ─── Managers and Components ───
@@ -45,9 +50,11 @@ TaskHandle_t heartbeatTaskHandle = NULL;
 #define VBAT     2 // Battery voltage pin for Heltec WiFi LoRa 32 V3
 
 // ─── Application State ───
-static bool lastReportedAnyPressedState = false;
 float currentRSSI = 0.0f;
-unsigned long lastStartUpdate = 0;
+unsigned long lastDisplayUpdate = 0;
+unsigned long armingStartTime = 0;
+unsigned long noButtonPressStartTime = 0;
+unsigned long lastKeepaliveTime = 0;
 
 // ─────────────────────────────────────────
 //           LORA CALLBACKS
@@ -55,8 +62,14 @@ unsigned long lastStartUpdate = 0;
 
 void onLoraDisplayUpdate(int percentage, float rssi) {
     currentRSSI = rssi;
-    Serial.printf("[LORA CB] DSP: %d%% (current state: %s, targetPct: %d, shownPct: %d)\n", 
-                 percentage, (stateManager.getState() == StateManager_remote::State::START) ? "START" : "MENU", stateManager.getTargetPercentage(), stateManager.getShownPercentage());
+    Serial.printf("[LORA CB] DSP: %d%% (current state: %d, targetPct: %d, shownPct: %d)\n", 
+                 percentage, (int)stateManager.getState(), stateManager.getTargetPercentage(), stateManager.getShownPercentage());
+
+    // If main display says percentage is 0, it has likely stopped.
+    // Force remote back to IDLE as a safety measure.
+    if (percentage == 0 && stateManager.getState() == StateManager_remote::State::CRUISING) {
+        stateManager.switchToIdle();
+    }
 
     if (stateManager.getState() != StateManager_remote::State::MENU) {
         stateManager.setTargetPercentage(percentage);
@@ -68,7 +81,6 @@ void onLoraDisplayUpdate(int percentage, float rssi) {
 
 void onLoraAckForValue(int percentage) {
     Serial.printf("[Remote] Received ACK from Main for VAL %d%%\n", percentage);
-    // This callback confirms receipt, the manager handles the waiting state.
 }
 
 // ─────────────────────────────────────────
@@ -76,29 +88,30 @@ void onLoraAckForValue(int percentage) {
 // ─────────────────────────────────────────
 void registerTripleTap() {
     static unsigned long tapTimes[3] = {0, 0, 0};
-    const unsigned long TRIPLE_TAP_WINDOW = 1500;
-
+    
     tapTimes[0] = tapTimes[1];
     tapTimes[1] = tapTimes[2];
     tapTimes[2] = millis();
 
-    if (tapTimes[0] > 0 && (tapTimes[2] - tapTimes[0] <= TRIPLE_TAP_WINDOW)) {
+    if (tapTimes[0] > 0 && (tapTimes[2] - tapTimes[0] <= Config::TRIPLE_TAP_WINDOW)) {
         Serial.println("TRIPLE PRESS → MENU");
         tapTimes[0] = tapTimes[1] = tapTimes[2] = 0;
-        loraManager.sendButtonPress(true);
         stateManager.switchToMenu();
-        displayManager.drawMenuScreen(stateManager.getShownPercentage());
     }
 }
 
 void incPct() {
-    stateManager.increasePercentage(Config::PERCENTAGE_STEP);
-    Serial.printf("INC → %d\n", stateManager.getTargetPercentage());
+    if (stateManager.getState() == StateManager_remote::State::MENU) {
+        stateManager.increasePercentage(Config::PERCENTAGE_STEP);
+        Serial.printf("INC → %d\n", stateManager.getTargetPercentage());
+    }
 }
 
 void decPct() {
-    stateManager.decreasePercentage(Config::PERCENTAGE_STEP);
-    Serial.printf("DEC → %d\n", stateManager.getTargetPercentage());
+    if (stateManager.getState() == StateManager_remote::State::MENU) {
+        stateManager.decreasePercentage(Config::PERCENTAGE_STEP);
+        Serial.printf("DEC → %d\n", stateManager.getTargetPercentage());
+    }
 }
 
 // ─────────────────────────────────────────
@@ -106,7 +119,7 @@ void decPct() {
 // ─────────────────────────────────────────
 void heartbeatTask(void *parameter) {
     TickType_t lastWakeTime = xTaskGetTickCount();
-    const TickType_t heartbeatPeriod = pdMS_TO_TICKS(Config::HEARTBEAT_INTERVAL);
+    const TickType_t heartbeatPeriod = pdMS_TO_TICKS(Config::HEARTBEAT_INTERVAL_MS);
     
     for (;;) {
         vTaskDelayUntil(&lastWakeTime, heartbeatPeriod);
@@ -117,12 +130,17 @@ void heartbeatTask(void *parameter) {
 // ─────────────────────────────────────────
 //              DISPLAY LOGIC
 // ─────────────────────────────────────────
-void drawMenu() {
-    displayManager.drawMenuScreen(stateManager.getShownPercentage());
-}
-
-void drawStart() {
-    displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery());
+void drawForState() {
+    switch(stateManager.getState()) {
+        case StateManager_remote::State::IDLE:
+        case StateManager_remote::State::ARMING:
+        case StateManager_remote::State::CRUISING:
+             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState());
+            break;
+        case StateManager_remote::State::MENU:
+            displayManager.drawMenuScreen(stateManager.getShownPercentage());
+            break;
+    }
 }
 
 uint16_t readBattery() {
@@ -148,7 +166,7 @@ void setup() {
     analogReadResolution(12);
 
     displayManager.begin();
-    drawStart();
+    drawForState();
 
     if (!loraManager.begin()) {
         Serial.println("LoRa Manager init failed!");
@@ -157,32 +175,16 @@ void setup() {
     loraManager.onDisplayUpdate(onLoraDisplayUpdate);
     loraManager.onAckForValue(onLoraAckForValue);
 
-    // Setup button callbacks
-    upButton.onPress([]() {
-        if (stateManager.getState() == StateManager_remote::State::START) {
-            registerTripleTap();
-        } else if (stateManager.getState() == StateManager_remote::State::MENU) {
-            incPct();
-        }
-    });
-    upButton.onHold([]() {
-        if (stateManager.getState() == StateManager_remote::State::MENU) incPct();
-    }, 200);
-
-    downButton.onPress([]() {
-        if (stateManager.getState() == StateManager_remote::State::MENU) decPct();
-    });
-    downButton.onHold([]() {
-        if (stateManager.getState() == StateManager_remote::State::MENU) decPct();
-    }, 200);
-
+    // Button setup is now simpler, we just poll them in the loop
+    upButton.onPress(incPct); // For menu
+    upButton.onHold(incPct, 200); // For menu
+    downButton.onPress(decPct); // For menu
+    downButton.onHold(decPct, 200); // For menu
+    
+    // The heartbeat task is no longer needed as KEEPALIVE serves a more specific purpose
     xTaskCreatePinnedToCore(heartbeatTask, "HeartbeatTask", 2048, NULL, 2, &heartbeatTaskHandle, 0);
     
-    if (heartbeatTaskHandle == NULL) {
-        Serial.println("Failed to create heartbeat task!");
-    } else {
-        Serial.println("Setup complete - Heartbeat task created on core 0");
-    }
+    Serial.println("Setup complete.");
 }
 
 // ─────────────────────────────────────────
@@ -193,40 +195,91 @@ void loop() {
     upButton.update();
     downButton.update();
 
-    switch (stateManager.getState()) {
-        case StateManager_remote::State::START: {
-            bool currentAnyPressed = upButton.isPressed() || downButton.isPressed();
-            if (currentAnyPressed != lastReportedAnyPressedState) {
-                loraManager.sendButtonPress(currentAnyPressed);
-                lastReportedAnyPressedState = currentAnyPressed;
-            }
+    bool anyButtonPressed = upButton.isPressed() || downButton.isPressed();
 
-            if (millis() - lastStartUpdate >= Config::START_UPDATE_MS) {
-                drawStart();
-                lastStartUpdate = millis();
+    switch (stateManager.getState()) {
+        case StateManager_remote::State::IDLE: {
+            if (anyButtonPressed) {
+                stateManager.switchToArming();
+                armingStartTime = millis();
+                Serial.println("IDLE → ARMING");
+            }
+            // Allow menu entry from IDLE via triple tap on UP button
+            if(upButton.isPressed()){
+                 static unsigned long lastUpPressTime = 0;
+                 if(millis() - lastUpPressTime > 300) { // Basic debounce
+                    registerTripleTap();
+                    lastUpPressTime = millis();
+                 }
+            }
+            break;
+        }
+
+        case StateManager_remote::State::ARMING: {
+            if (!anyButtonPressed) {
+                stateManager.switchToIdle();
+                Serial.println("ARMING → IDLE");
+                break;
+            }
+            
+            if (millis() - armingStartTime >= Config::ARMING_DURATION_MS) {
+                Serial.println("ARMING → CRUISING (START_MOTOR sent)");
+                loraManager.sendStartMotor();
+                stateManager.switchToCruising();
+                lastKeepaliveTime = millis(); // Send first keepalive immediately
+                noButtonPressStartTime = 0; // Reset this timer
+            }
+            break;
+        }
+
+        case StateManager_remote::State::CRUISING: {
+            if (anyButtonPressed) {
+                noButtonPressStartTime = 0; // Reset timer because a button is pressed
+
+                if (millis() - lastKeepaliveTime >= Config::KEEPALIVE_INTERVAL_MS) {
+                    loraManager.sendKeepalive();
+                    lastKeepaliveTime = millis();
+                    Serial.println("KEEPALIVE sent");
+                }
+            } else { // No buttons are pressed
+                if (noButtonPressStartTime == 0) {
+                    // Start the timer
+                    noButtonPressStartTime = millis();
+                    Serial.println("No button press timer started...");
+                } else if (millis() - noButtonPressStartTime >= Config::NO_BUTTON_TIMEOUT_MS) {
+                    Serial.println("CRUISING → IDLE (STOP_MOTOR sent)");
+                    loraManager.sendStopMotor();
+                    stateManager.switchToIdle();
+                }
             }
             break;
         }
 
         case StateManager_remote::State::MENU: {
-            if (upButton.isPressed() || downButton.isPressed()) {
+            // In menu, button actions are handled by callbacks
+            if (anyButtonPressed) {
                 stateManager.resetMenuActivityTimer();
             }
             
             if (stateManager.isMenuTimedOut(Config::MENU_TIMEOUT_MS)) {
                 Serial.printf("[Remote] Menu timeout - sending VAL message with %d%% to main\n", stateManager.getTargetPercentage());
                 loraManager.sendValue(stateManager.getTargetPercentage());
-                stateManager.switchToStart();
-                drawStart();
-                lastStartUpdate = millis();
+                stateManager.switchToIdle(); // Return to IDLE
                 break;
             }
 
             if (stateManager.updateShownPercentage(Config::SMOOTH_STEP, Config::SMOOTH_UPDATE_MS)) {
-                drawMenu();
+                // Update display handled below
             }
             break;
         }
     }
+
+    // Centralized display update
+    if (millis() - lastDisplayUpdate >= Config::START_UPDATE_MS) {
+        drawForState();
+        lastDisplayUpdate = millis();
+    }
+
     delay(5);
 }

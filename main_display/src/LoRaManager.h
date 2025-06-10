@@ -15,6 +15,9 @@ public:
     void update();
     void sendDisplayPercentage(int percentage);
     void setHeartbeatManager(HeartbeatManager* hbMgr);
+
+    bool getStartMotorRequest();
+    bool getStopMotorRequest();
     
 private:
     void handleMessage(const RiiWynch::Protocol::Message& msg);
@@ -26,6 +29,9 @@ private:
     HeartbeatManager* heartbeatManager;
     
     uint16_t packetCounter = 0;
+    
+    bool _startMotorRequest = false;
+    bool _stopMotorRequest = false;
     
     // State for resending DSP messages
     bool waitingForDspAck = false;

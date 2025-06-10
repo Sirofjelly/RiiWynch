@@ -1,7 +1,7 @@
 #include "StateManager_remote.h"
 
 StateManager_remote::StateManager_remote()
-    : _currentState(State::START),
+    : _currentState(State::IDLE),
       _targetPercentage(0),
       _shownPercentage(0),
       _lastActivityTime(0),
@@ -11,8 +11,16 @@ StateManager_remote::State StateManager_remote::getState() const {
     return _currentState;
 }
 
-void StateManager_remote::switchToStart() {
-    _currentState = State::START;
+void StateManager_remote::switchToIdle() {
+    _currentState = State::IDLE;
+}
+
+void StateManager_remote::switchToArming() {
+    _currentState = State::ARMING;
+}
+
+void StateManager_remote::switchToCruising() {
+    _currentState = State::CRUISING;
 }
 
 void StateManager_remote::switchToMenu() {
