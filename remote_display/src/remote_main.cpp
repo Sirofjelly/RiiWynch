@@ -267,13 +267,11 @@ void loop() {
                 stateManager.switchToIdle(); // Return to IDLE
                 break;
             }
-
-            if (stateManager.updateShownPercentage(Config::SMOOTH_STEP, Config::SMOOTH_UPDATE_MS)) {
-                // Update display handled below
-            }
             break;
         }
     }
+
+    stateManager.updateShownPercentage(Config::SMOOTH_STEP, Config::SMOOTH_UPDATE_MS);
 
     // Centralized display update
     if (millis() - lastDisplayUpdate >= Config::START_UPDATE_MS) {
