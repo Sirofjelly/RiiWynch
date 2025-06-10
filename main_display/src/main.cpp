@@ -37,6 +37,9 @@ StateManager& getGlobalStateManager() {
   return state;
 }
 
+// Function prototype for handleDisplayUpdates
+void handleDisplayUpdates(bool stopPressed);
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Setup.");
@@ -106,10 +109,6 @@ void loop() {
   }
 
   updateStartup(startPressed, stopPressed);  
-  // Reset emergency stop if start is pressed and remote is connected
-  if (startPressed && heartbeatManager.isRemoteConnected()) {
-      getGlobalStateManager().setEmergencyStop(false);
-  }
 
   handleWebUI();
 

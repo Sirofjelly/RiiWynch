@@ -53,6 +53,7 @@ void HeartbeatManager::onHeartbeatReceived() {
     if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         if (!remoteConnected) {
             Serial.println("Remote (re)connected.");
+            state.setEmergencyStop(false); // Clear emergency stop on reconnect
             // Show current mode when remote reconnects
             if (profileManager) {
                 profileManager->showModeOnReconnect();
@@ -102,7 +103,7 @@ void HeartbeatManager::executeEmergencyStop() {
     state.setEmergencyStop(true);
     
     // Update display to show connection lost
-    display.updateText("Fuck");
+    display.updateText("Lost");
     
     // Update connection status
     remoteConnected = false;

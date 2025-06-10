@@ -22,7 +22,7 @@ void ProfileManager::update() {
     display.updateModeDisplay();
     
     // Always update button states regardless of mode
-    checkModeSwitch(false); // Simplified call, logic is now self-contained
+    checkModeSwitch(false);
 }
 
 void ProfileManager::checkModeSwitch(bool stopPressed) {
@@ -87,11 +87,3 @@ void ProfileManager::showModeOnReconnect() {
 void ProfileManager::loadProfile(int profileIndex) {
     loadSettingsForProfile(profileIndex);
 }
-
-void ProfileManager::showModeDisplay() {
-    if (manualMode) {
-        display.startModeDisplay(modeNames[3], 1500); // MANUAL - show for 1.5 seconds
-    } else {
-        display.startModeDisplay(modeNames[currentProfile], 1500); // Show current mode for 1.5 seconds
-    }
-} 
