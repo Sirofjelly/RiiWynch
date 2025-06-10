@@ -9,10 +9,14 @@
 // ─────────────────────────────────────────
 //         BASIC FORWARD DECLARATIONS
 // ─────────────────────────────────────────
-void incPct();
-void decPct();
+void incPct(int step);
+void decPct(int step);
 uint16_t readBattery();
 void heartbeatTask(void *parameter);
+
+// Button callback wrappers
+void incPctSingle();
+void decPctSingle();
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -86,33 +90,71 @@ void onLoraAckForValue(int percentage) {
 // ─────────────────────────────────────────
 //           BUTTON HANDLING
 // ─────────────────────────────────────────
-void registerTripleTap() {
-    static unsigned long tapTimes[3] = {0, 0, 0};
-    
-    tapTimes[0] = tapTimes[1];
-    tapTimes[1] = tapTimes[2];
-    tapTimes[2] = millis();
 
-    if (tapTimes[0] > 0 && (tapTimes[2] - tapTimes[0] <= Config::TRIPLE_TAP_WINDOW)) {
+void handleMenuNavigation(bool isUp) {
+    if (stateManager.getState() != StateManager_remote::State::MENU) return;
+
+    // This function now only handles single presses for menu navigation.
+    if (isUp) {
+        incPctSingle();
+    } else {
+        decPctSingle();
+    }
+}
+
+void enterMenuOnTriplePress() {
+    if (stateManager.getState() != StateManager_remote::State::IDLE) return;
+
+    static unsigned long lastTapTime = 0;
+    static int tapCount = 0;
+
+    if (millis() - lastTapTime > Config::TRIPLE_TAP_WINDOW) {
+        tapCount = 0;
+    }
+
+    tapCount++;
+    lastTapTime = millis();
+
+    if (tapCount >= 3) {
         Serial.println("TRIPLE PRESS → MENU");
-        tapTimes[0] = tapTimes[1] = tapTimes[2] = 0;
         stateManager.switchToMenu();
+        tapCount = 0;
     }
 }
 
-void incPct() {
-    if (stateManager.getState() == StateManager_remote::State::MENU) {
-        stateManager.increasePercentage(Config::PERCENTAGE_STEP);
-        Serial.printf("INC → %d\n", stateManager.getTargetPercentage());
+void handleUpButtonPress() {
+    if (stateManager.getState() == StateManager_remote::State::IDLE) {
+        enterMenuOnTriplePress();
+    } else if (stateManager.getState() == StateManager_remote::State::MENU) {
+        handleMenuNavigation(true);
     }
 }
 
-void decPct() {
-    if (stateManager.getState() == StateManager_remote::State::MENU) {
-        stateManager.decreasePercentage(Config::PERCENTAGE_STEP);
-        Serial.printf("DEC → %d\n", stateManager.getTargetPercentage());
+void handleDownButtonPress() {
+    if (stateManager.getState() == StateManager_remote::State::IDLE) {
+        enterMenuOnTriplePress();
+    } else if (stateManager.getState() == StateManager_remote::State::MENU) {
+        handleMenuNavigation(false);
     }
 }
+
+void incPct(int step) {
+    if (stateManager.getState() == StateManager_remote::State::MENU) {
+        stateManager.increasePercentage(step);
+        Serial.printf("INC (%d) → %d\n", step, stateManager.getTargetPercentage());
+    }
+}
+
+void decPct(int step) {
+    if (stateManager.getState() == StateManager_remote::State::MENU) {
+        stateManager.decreasePercentage(step);
+        Serial.printf("DEC (%d) → %d\n", step, stateManager.getTargetPercentage());
+    }
+}
+
+// Wrapper functions for callbacks
+void incPctSingle() { incPct(1); }
+void decPctSingle() { decPct(1); }
 
 // ─────────────────────────────────────────
 //            HEARTBEAT TASK
@@ -175,11 +217,12 @@ void setup() {
     loraManager.onDisplayUpdate(onLoraDisplayUpdate);
     loraManager.onAckForValue(onLoraAckForValue);
 
-    // Button setup is now simpler, we just poll them in the loop
-    upButton.onPress(incPct); // For menu
-    upButton.onHold(incPct, 200); // For menu
-    downButton.onPress(decPct); // For menu
-    downButton.onHold(decPct, 200); // For menu
+    // --- Button Callbacks ---
+    upButton.onPress(handleUpButtonPress);
+    upButton.onHold(incPctSingle, 75);
+    
+    downButton.onPress(handleDownButtonPress);
+    downButton.onHold(decPctSingle, 75);
     
     // The heartbeat task is no longer needed as KEEPALIVE serves a more specific purpose
     xTaskCreatePinnedToCore(heartbeatTask, "HeartbeatTask", 2048, NULL, 2, &heartbeatTaskHandle, 0);
@@ -203,14 +246,6 @@ void loop() {
                 stateManager.switchToArming();
                 armingStartTime = millis();
                 Serial.println("IDLE → ARMING");
-            }
-            // Allow menu entry from IDLE via triple tap on UP button
-            if(upButton.isPressed()){
-                 static unsigned long lastUpPressTime = 0;
-                 if(millis() - lastUpPressTime > 300) { // Basic debounce
-                    registerTripleTap();
-                    lastUpPressTime = millis();
-                 }
             }
             break;
         }
