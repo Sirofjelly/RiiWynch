@@ -38,7 +38,7 @@ StateManager& getGlobalStateManager() {
 }
 
 // Function prototype for handleDisplayUpdates
-void handleDisplayUpdates(bool stopPressed);
+void handleDisplayUpdates(bool isStopped);
 
 void setup() {
   Serial.begin(115200);
@@ -93,34 +93,39 @@ void loop() {
   upButton.update();
   downButton.update();
 
+  // Update state machine
+  state.update();
+
   // Read button states
-  bool startPressed = isStartPressed() || loraManager.getStartMotorRequest();
-  bool stopPressed  = isStopPressed() || getGlobalStateManager().isEmergencyStopActive() || loraManager.getStopMotorRequest();
+  if (isStartPressed() || loraManager.getStartMotorRequest()) {
+    state.start();
+  }
+  if (isStopPressed() || loraManager.getStopMotorRequest()) {
+    state.stop();
+  }
+
   bool chokePressed = isChokePressed();
   bool brakePressed = isBrakePressed();
 
   // Update hardware
-  updateRelays(startPressed, stopPressed);
+  updateRelays(state.getState() == StateManager::State::RUNNING, 
+               state.getState() == StateManager::State::STOPPED);
   updateServos(chokePressed, brakePressed);
 
-  // Safety check for startup
-  if (startupInProgress || state.getTargetPercentage() == 0) {
-    startPressed = false;
-  }
-
-  updateStartup(startPressed, stopPressed);  
+  updateStartup(isStartPressed() || loraManager.getStartMotorRequest(), 
+                isStopPressed() || loraManager.getStopMotorRequest());  
 
   handleWebUI();
 
   // Update managers
   profileManager.update();
-  profileManager.checkModeSwitch(stopPressed);
+  profileManager.checkModeSwitch(isStopPressed() || loraManager.getStopMotorRequest());
 
   loraManager.update();
   heartbeatManager.update();
 
   // Display management
-  handleDisplayUpdates(stopPressed);
+  handleDisplayUpdates(state.getState() == StateManager::State::STOPPED);
 
   // Servo control in manual mode
   if (currentState == MANUAL_CONTROL) {
@@ -132,14 +137,14 @@ void loop() {
   delay(5);
 }
 
-void handleDisplayUpdates(bool stopPressed) {
+void handleDisplayUpdates(bool isStopped) {
   // STOP blinking
   static bool flashState = false;
   static unsigned long lastFlashTime = 0;
   static bool wasStopFlashing = false;
   static int lastSentDisplayPct = -1; // Track last sent percentage to avoid duplicates
 
-  if (stopPressed) {
+  if (isStopped) {
     unsigned long now = millis();
     if (now - lastFlashTime > 600) { // slower blink
       flashState = !flashState;

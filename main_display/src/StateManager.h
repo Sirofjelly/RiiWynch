@@ -2,24 +2,34 @@
 
 class StateManager {
 public:
+    enum class State {
+        IDLE,
+        RUNNING,
+        STOPPED
+    };
+
+    void setState(State newState);
+    State getState() const;
+    void start();
+    void stop();
+
     void increase();
     void decrease();
     bool needsDisplayUpdate();
     void updateDisplayStep();
-    int getTargetPercentage() const;               
-    int getDisplayedPercentage() const;           
-    void setTargetPercentage(int percentage); 
+    int getTargetPercentage() const;
+    int getDisplayedPercentage() const;
+    void setTargetPercentage(int percentage);
     void setDirectPercentage(int percentage); // Set both target and displayed immediately
-
-    // Emergency Stop
-    void setEmergencyStop(bool active);
-    bool isEmergencyStopActive() const;
+    void update(); // Add an update method for state transitions
 
 private:
-  int targetPercentage;
-  int displayedPercentage = 0;
-  unsigned long lastUpdateTime = 0;
-  const unsigned long updateInterval = 10;
-  bool displayUpdateRequested = false; // Flag to trigger display updates
-  bool emergencyStopActive = false; // Flag for emergency stop
+    State currentState = State::IDLE;
+    unsigned long stateEnterTime = 0;
+
+    int targetPercentage;
+    int displayedPercentage = 0;
+    unsigned long lastUpdateTime = 0;
+    const unsigned long updateInterval = 10;
+    bool displayUpdateRequested = false; // Flag to trigger display updates
 };

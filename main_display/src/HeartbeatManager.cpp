@@ -53,7 +53,8 @@ void HeartbeatManager::onHeartbeatReceived() {
     if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         if (!remoteConnected) {
             Serial.println("Remote (re)connected.");
-            state.setEmergencyStop(false); // Clear emergency stop on reconnect
+            // No longer need to clear emergency stop here, as STOPPED state will timeout to IDLE
+            // state.setEmergencyStop(false); // Clear emergency stop on reconnect
             // Show current mode when remote reconnects
             if (profileManager) {
                 profileManager->showModeOnReconnect();
@@ -99,8 +100,7 @@ void HeartbeatManager::checkTimeout() {
 
 void HeartbeatManager::executeEmergencyStop() {
     // Key safety action - stop the system immediately
-    state.setTargetPercentage(0);
-    state.setEmergencyStop(true);
+    state.setState(StateManager::State::STOPPED);
     
     // Update display to show connection lost
     display.updateText("Lost");

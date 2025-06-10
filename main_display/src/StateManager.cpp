@@ -1,6 +1,28 @@
 #include "StateManager.h"
 #include <Arduino.h>
 
+void StateManager::setState(State newState) {
+    if (currentState != newState) {
+        currentState = newState;
+        stateEnterTime = millis();
+        if (newState == State::STOPPED) {
+            setDirectPercentage(0);
+        }
+    }
+}
+
+StateManager::State StateManager::getState() const {
+    return currentState;
+}
+
+void StateManager::update() {
+    if (currentState == State::STOPPED) {
+        if (millis() - stateEnterTime >= 5000) {
+            setState(State::IDLE);
+        }
+    }
+}
+
 int StateManager::getTargetPercentage() const {
     return targetPercentage;
 }
@@ -51,12 +73,17 @@ void StateManager::updateDisplayStep() {
   lastUpdateTime = millis();
 }
 
-// Emergency Stop methods
-void StateManager::setEmergencyStop(bool active) {
-    emergencyStopActive = active;
+// Emergency Stop methods are now replaced by the state machine
+
+void StateManager::start() {
+    if (currentState == State::IDLE) {
+        setState(State::RUNNING);
+    }
 }
 
-bool StateManager::isEmergencyStopActive() const {
-    return emergencyStopActive;
+void StateManager::stop() {
+    if (currentState == State::RUNNING) {
+        setState(State::STOPPED);
+    }
 }
 
