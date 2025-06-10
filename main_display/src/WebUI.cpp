@@ -7,7 +7,7 @@
 #include "StartupManager.h"
 
 const char* ssid = "RiiWynch";
-const char* password = "912345678";
+const char* password = "1234";
 
 WebServer server(80);
 

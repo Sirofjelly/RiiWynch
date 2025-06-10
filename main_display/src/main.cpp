@@ -17,45 +17,6 @@
 #include <semphr.h>
 #include "Button.h"
 
-// === PROFILING SYSTEM ===
-#define ENABLE_PROFILING 1  // Set to 0 to disable profiling
-
-#if ENABLE_PROFILING
-unsigned long profileLoopStart = 0;
-unsigned long profileSectionStart = 0;
-unsigned long profileLoopCount = 0;
-
-#define PROFILE_LOOP_START() \
-  do { \
-    profileLoopStart = millis(); \
-    profileSectionStart = profileLoopStart; \
-    profileLoopCount++; \
-  } while(0)
-
-#define PROFILE_SECTION(name) \
-  do { \
-    unsigned long now = millis(); \
-    unsigned long duration = now - profileSectionStart; \
-    if (duration > 5) { \
-      Serial.printf("[PROFILE] %s: %lu ms\n", name, duration); \
-    } \
-    profileSectionStart = now; \
-  } while(0)
-
-#define PROFILE_LOOP_END() \
-  do { \
-    unsigned long totalTime = millis() - profileLoopStart; \
-    if (totalTime > 20 || (profileLoopCount % 1000 == 0)) { \
-      Serial.printf("[PROFILE] Loop #%lu total: %lu ms\n", profileLoopCount, totalTime); \
-    } \
-  } while(0)
-#else
-#define PROFILE_LOOP_START()
-#define PROFILE_SECTION(name)
-#define PROFILE_LOOP_END()
-#endif
-// === END PROFILING SYSTEM ===
-
 // Component instances
 DisplayManager display;
 Button upButton(7);
@@ -75,8 +36,6 @@ const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
 StateManager& getGlobalStateManager() {
   return state;
 }
-
-void handleDisplayUpdates(bool stopPressed);
 
 void setup() {
   Serial.begin(115200);
@@ -127,8 +86,6 @@ void setup() {
 }
 
 void loop() {
-  PROFILE_LOOP_START();
-
   // Update new buttons
   upButton.update();
   downButton.update();
@@ -138,40 +95,33 @@ void loop() {
   bool stopPressed  = isStopPressed() || getGlobalStateManager().isEmergencyStopActive();
   bool chokePressed = isChokePressed();
   bool brakePressed = isBrakePressed();
-  PROFILE_SECTION("Button reads");
 
   // Update hardware
   updateRelays(startPressed, stopPressed);
   updateServos(chokePressed, brakePressed);
-  PROFILE_SECTION("Relay/Servo updates");
 
   // Safety check for startup
   if (startupInProgress || state.getTargetPercentage() == 0) {
     startPressed = false;
   }
 
-  updateStartup(startPressed, stopPressed);
-  PROFILE_SECTION("Startup update");
-  
+  updateStartup(startPressed, stopPressed);  
   // Reset emergency stop if start is pressed and remote is connected
   if (startPressed && heartbeatManager.isRemoteConnected()) {
       getGlobalStateManager().setEmergencyStop(false);
   }
 
   handleWebUI();
-  PROFILE_SECTION("WebUI handling");
 
   // Update managers
   profileManager.update();
   profileManager.checkModeSwitch(stopPressed);
-  PROFILE_SECTION("Profile management");
 
   loraManager.update();
   heartbeatManager.update();
 
   // Display management
   handleDisplayUpdates(stopPressed);
-  PROFILE_SECTION("Display updates");
 
   // Servo control in manual mode
   if (currentState == MANUAL_CONTROL) {
@@ -180,9 +130,6 @@ void loop() {
         gasServo.write(calculateTargetAngle());
     }
   }
-  PROFILE_SECTION("Manual control servo");
-
-  PROFILE_LOOP_END();
   delay(5);
 }
 
