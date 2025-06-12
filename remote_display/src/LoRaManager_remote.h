@@ -8,6 +8,7 @@ public:
     LoRaManager_remote();
     
     bool begin();
+    bool restart(); // Restart LoRa with new settings
     void update();
     
     void sendValue(uint8_t percentage);
@@ -20,6 +21,7 @@ public:
     // Callback functions to link with main application logic
     void onDisplayUpdate(void (*callback)(int percentage, float rssi));
     void onAckForValue(void (*callback)(int percentage));
+    void onLoRaSettingsReceived(void (*callback)()); // Callback when LoRa settings are received and applied
 
 private:
     void handleMessage(const RiiWynch::Protocol::Message& msg);
@@ -31,6 +33,7 @@ private:
     // Callbacks
     void (*_displayUpdateCallback)(int percentage, float rssi) = nullptr;
     void (*_ackForValueCallback)(int percentage) = nullptr;
+    void (*_loraSettingsReceivedCallback)() = nullptr;
     
     // State for resending VAL messages
     bool waitingForValAck = false;

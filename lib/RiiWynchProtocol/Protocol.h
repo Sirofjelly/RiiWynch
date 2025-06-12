@@ -14,7 +14,8 @@ enum class MessageType : uint8_t {
     BUTTON_PRESS,
     START_MOTOR,
     STOP_MOTOR,
-    KEEPALIVE
+    KEEPALIVE,
+    LORA_SETTINGS
 };
 
 enum class DeviceID : uint8_t {
@@ -23,6 +24,14 @@ enum class DeviceID : uint8_t {
 };
 
 #pragma pack(push, 1)
+struct LoRaSettings {
+    float frequency;      // MHz
+    int16_t power;        // dBm (using int16_t to fit in packet)
+    uint8_t spreadingFactor;
+    uint8_t codingRate;
+    float bandwidth;      // kHz
+};
+
 struct Message {
     MessageType type;
     DeviceID source;
@@ -31,6 +40,7 @@ struct Message {
     union Payload {
         uint8_t percentage;
         bool isPressed;
+        LoRaSettings loraSettings;
     } payload;
 };
 #pragma pack(pop)

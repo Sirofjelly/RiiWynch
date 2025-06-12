@@ -37,6 +37,10 @@ StateManager& getGlobalStateManager() {
   return state;
 }
 
+LoRaManager& getGlobalLoRaManager() {
+  return loraManager;
+}
+
 // Function prototype for handleDisplayUpdates
 void handleDisplayUpdates(bool isStopped);
 
@@ -62,6 +66,9 @@ void setup() {
 
   // Initialize managers
   Serial.println("Initializing managers...");
+  
+  // Load global settings (LoRa settings)
+  loadGlobalSettings();
   
   // Initialize ProfileManager first as it sets up the initial profile
   profileManager.begin();

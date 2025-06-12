@@ -16,6 +16,10 @@ void loadSettingsForProfile(int profile);
 // Declare the function to save settings for a specific profile
 void saveSettingsForProfile(int profile);
 
+// Declare global settings functions (non-profile specific)
+void loadGlobalSettings();
+void saveGlobalSettings();
+
 extern unsigned long starterRelayTime;
 extern int stage1SpeedPercentage;  // Target speed for stage 1 (5-100)
 extern unsigned long stage1Duration; // ms – ramp to stage1SpeedPercentage
@@ -28,3 +32,10 @@ extern int brakeAngle;
 extern unsigned long stopCooldownDuration;
 extern bool manualMode;
 extern StateManager state;
+
+// Global LoRa Settings (not profile-specific)
+extern float loraFrequency;      // MHz (863-870 for EU)
+extern int loraPower;            // dBm (2-22 for SX1262)
+extern int loraSpreadingFactor;  // 7-12
+extern int loraCodingRate;       // 5-8 
+extern float loraBandwidth;      // kHz (7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500)

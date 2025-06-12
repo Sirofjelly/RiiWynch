@@ -32,6 +32,13 @@ const int totalProfiles = 4; // Updated to 4 profiles
 // Ensure `currentProfile` is defined only here
 int currentProfile = 0;
 
+// Global LoRa Settings (not profile-specific) - default values
+float loraFrequency = 868.0;      // MHz (EU band)
+int loraPower = 14;               // dBm (safe default)
+int loraSpreadingFactor = 8;      // good range/speed balance
+int loraCodingRate = 5;           // error correction
+float loraBandwidth = 125.0;      // kHz (standard)
+
 void loadSettings() {
   // Begin preferences with "riiwynch" namespace in read-write mode
   if (!preferences.begin("riiwynch", false)) {
@@ -155,5 +162,79 @@ void saveSettingsForProfile(int profileIndex) {
         Serial.println("✅ Settings successfully saved to preferences");
     } else {
         Serial.println("⚠️ Failed to save one or more settings to preferences. Possible NVS corruption or out of space.");
+    }
+}
+
+// Global Settings Functions (LoRa settings that apply to all profiles)
+void loadGlobalSettings() {
+    Serial.println("📡 Loading global LoRa settings from preferences...");
+    
+    // Begin preferences with "riiwynch" namespace, read-write mode
+    if (!preferences.begin("riiwynch", false)) {
+        Serial.println("⚠️ Failed to initialize Preferences for global settings");
+        return;
+    }
+    
+    // Check if global settings exist
+    bool globalExists = preferences.getBool("global_init", false);
+
+    if (!globalExists) {
+        Serial.println("⚠️ Global settings not initialized — initializing with defaults.");
+        
+        // Use current default values (already set above)
+        // Save these defaults
+        saveGlobalSettings();
+        preferences.end();
+        return;
+    }
+
+    // Cache old values for comparison
+    float oldFreq = loraFrequency;
+    int oldPower = loraPower;
+    
+    // Load global settings
+    loraFrequency = preferences.getFloat("global_freq", 868.0);
+    loraPower = preferences.getInt("global_power", 14);
+    loraSpreadingFactor = preferences.getInt("global_sf", 8);
+    loraCodingRate = preferences.getInt("global_cr", 5);
+    loraBandwidth = preferences.getFloat("global_bw", 125.0);
+    
+    Serial.printf("✅ Loaded global LoRa settings from preferences\n");
+    Serial.printf("  Frequency: %.1f MHz (was %.1f)\n", loraFrequency, oldFreq);
+    Serial.printf("  Power: %d dBm (was %d)\n", loraPower, oldPower);
+    Serial.printf("  SF: %d, CR: %d, BW: %.1f kHz\n", loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    
+    // Close preferences
+    preferences.end();
+}
+
+void saveGlobalSettings() {
+    Serial.println("💾 Saving global LoRa settings...");
+    Serial.printf("  Frequency: %.1f MHz\n", loraFrequency);
+    Serial.printf("  Power: %d dBm\n", loraPower);
+    Serial.printf("  SF: %d, CR: %d, BW: %.1f kHz\n", loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    
+    // Begin preferences with "riiwynch" namespace, read-write mode
+    if (!preferences.begin("riiwynch", false)) {
+        Serial.println("⚠️ Failed to initialize Preferences for global settings");
+        return;
+    }
+    
+    // Mark global settings as initialized
+    bool ok = preferences.putBool("global_init", true);
+
+    // Save all global settings and check each result
+    ok &= preferences.putFloat("global_freq", loraFrequency);
+    ok &= preferences.putInt("global_power", loraPower);
+    ok &= preferences.putInt("global_sf", loraSpreadingFactor);
+    ok &= preferences.putInt("global_cr", loraCodingRate);
+    ok &= preferences.putFloat("global_bw", loraBandwidth);
+
+    preferences.end();
+
+    if (ok) {
+        Serial.println("✅ Global settings successfully saved to preferences");
+    } else {
+        Serial.println("⚠️ Failed to save one or more global settings to preferences.");
     }
 }

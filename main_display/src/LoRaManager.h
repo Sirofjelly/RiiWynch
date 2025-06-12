@@ -12,8 +12,10 @@ public:
     LoRaManager(StateManager& stateMgr, DisplayManager& displayMgr);
     
     bool begin();
+    bool restart(); // Restart LoRa with new settings
     void update();
     void sendDisplayPercentage(int percentage);
+    void sendLoRaSettings(); // Send current LoRa settings to remote
     void setHeartbeatManager(HeartbeatManager* hbMgr);
 
     bool getStartMotorRequest();

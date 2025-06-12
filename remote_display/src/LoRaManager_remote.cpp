@@ -1,10 +1,22 @@
 #include "LoRaManager_remote.h"
+#include "Settings_remote.h"
 #include <Arduino.h>
 
 LoRaManager_remote::LoRaManager_remote() {}
 
 bool LoRaManager_remote::begin() {
-    return transceiver.begin();
+    // Use global LoRa settings from Settings_remote.h
+    Serial.printf("[LoRa Remote] Initializing with freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
+                  loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+}
+
+bool LoRaManager_remote::restart() {
+    Serial.println("[LoRa Remote] Restarting with new settings...");
+    // Use updated global LoRa settings
+    Serial.printf("[LoRa Remote] New settings: freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
+                  loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
 }
 
 void LoRaManager_remote::onDisplayUpdate(void (*callback)(int percentage, float rssi)) {
@@ -13,6 +25,10 @@ void LoRaManager_remote::onDisplayUpdate(void (*callback)(int percentage, float 
 
 void LoRaManager_remote::onAckForValue(void (*callback)(int percentage)) {
     _ackForValueCallback = callback;
+}
+
+void LoRaManager_remote::onLoRaSettingsReceived(void (*callback)()) {
+    _loraSettingsReceivedCallback = callback;
 }
 
 void LoRaManager_remote::update() {
@@ -49,6 +65,22 @@ void LoRaManager_remote::handleMessage(const RiiWynch::Protocol::Message& msg) {
                 if (_ackForValueCallback) {
                     _ackForValueCallback(msg.payload.percentage);
                 }
+            }
+            break;
+
+        case RiiWynch::Protocol::MessageType::LORA_SETTINGS:
+            Serial.println("[LORA RX] LoRa settings received from main");
+            // Apply the received LoRa settings
+            applyReceivedLoRaSettings(
+                msg.payload.loraSettings.frequency,
+                (int)msg.payload.loraSettings.power,
+                (int)msg.payload.loraSettings.spreadingFactor,
+                (int)msg.payload.loraSettings.codingRate,
+                msg.payload.loraSettings.bandwidth
+            );
+            // Notify callback that settings were received and applied
+            if (_loraSettingsReceivedCallback) {
+                _loraSettingsReceivedCallback();
             }
             break;
 

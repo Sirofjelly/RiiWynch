@@ -5,6 +5,7 @@
 #include "StateManager.h"
 #include "DisplayManager.h"
 #include "StartupManager.h"
+#include "LoRaManager.h"
 
 const char* ssid = "RiiWynch";
 const char* password = "123456789";
@@ -28,9 +29,21 @@ extern int currentProfile; // Use the `extern` declaration from Settings.h
 extern DisplayManager display;
 extern const char* modeNames[4];
 
+// Global LoRa settings
+extern float loraFrequency;
+extern int loraPower;
+extern int loraSpreadingFactor;
+extern int loraCodingRate;
+extern float loraBandwidth;
+
+// Forward declarations
+extern StateManager& getGlobalStateManager();
+extern class LoRaManager& getGlobalLoRaManager();
+
 void handleRoot() {
   if (manualMode) currentProfile = 3;
   loadSettingsForProfile(currentProfile); // Always load current profile's values
+  loadGlobalSettings(); // Load global LoRa settings
 
   String html_content = R"rawliteral(
 <!DOCTYPE html>
@@ -40,6 +53,7 @@ void handleRoot() {
   <style>
     body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; }
     h2 { font-size: 3.3em; margin-bottom: 35px; }
+    h3 { font-size: 2.5em; margin: 35px 0 20px 0; color: #ff00ff; border-bottom: 2px solid #ff00ff; padding-bottom: 10px; }
     .status-message { background-color: rgba(0, 255, 0, 0.2); color: #00ff00; padding: 18px; margin: 24px auto; border-radius: 13px; border: 2.75px solid #00ff00; max-width: 90%; font-size: 2em; display: none; }
     .form-row { display: flex; align-items: center; justify-content: flex-start; margin: 18px auto; max-width: 900px; }
     label { display: inline-block; width: 500px; text-align: right; margin-right: 40px; font-size: 2em; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -48,6 +62,7 @@ void handleRoot() {
     .mode-row { font-size: 2em; margin: 26px auto 0 auto; display: flex; justify-content: center; align-items: center; gap: 16px; }
     .mode-btn-row { display: flex; justify-content: center; margin: 10px auto 26px auto; }
     #profileInput { width: 260px; min-width: 10ch; max-width: 20ch; font-size: 2em; }
+    .section-separator { margin: 40px 0; }
   </style>
 </head>
 <body>
@@ -76,6 +91,23 @@ void handleRoot() {
   html_content += R"rawliteral(
     <button type="button" class="button" onclick="applySettings()">Apply</button>
     <button type="button" class="button" onclick="saveSettings()">Save</button>
+  </form>
+
+  <div class="section-separator"></div>
+  <h3>Global LoRa Settings</h3>
+  <form id="loraSettingsForm" onsubmit="return false;">
+)rawliteral";
+
+  // Add LoRa settings form fields
+  html_content += "<div class=\"form-row\"><label>Frequency (MHz):</label><input name=\"loraFrequency\" type=\"text\" value=\"" + String(loraFrequency, 1) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Power (dBm):</label><input name=\"loraPower\" type=\"text\" value=\"" + String(loraPower) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Spreading Factor:</label><input name=\"loraSpreadingFactor\" type=\"text\" value=\"" + String(loraSpreadingFactor) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Coding Rate:</label><input name=\"loraCodingRate\" type=\"text\" value=\"" + String(loraCodingRate) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Bandwidth (kHz):</label><input name=\"loraBandwidth\" type=\"text\" value=\"" + String(loraBandwidth, 1) + "\"></div>";
+  
+  html_content += R"rawliteral(
+    <button type="button" class="button" onclick="applyLoRaSettings()">Apply LoRa</button>
+    <button type="button" class="button" onclick="saveLoRaSettings()">Save LoRa</button>
   </form>
 
   <script>
@@ -132,6 +164,22 @@ void handleRoot() {
           showStatusMessage('Switched to Mode ' + modeNames[data.manualMode ? 3 : data.profile]);
         })
         .catch(error => { showStatusMessage('Error switching mode: ' + error, false); });
+    }
+    function applyLoRaSettings() {
+      const formData = new FormData(document.getElementById('loraSettingsForm'));
+      fetch('/setLora', { method: 'POST', body: formData })
+      .then(response => response.text())
+      .then(data => { showStatusMessage('LoRa settings applied successfully!'); })
+      .catch(error => { showStatusMessage('Error applying LoRa settings: ' + error, false); });
+    }
+    function saveLoRaSettings() {
+      const form = document.getElementById('loraSettingsForm');
+      const formData = new FormData(form);
+      fetch('/saveLora', { method: 'POST', body: formData })
+      .then(response => response.json())
+      .then(data => { if(data.success) { showStatusMessage('LoRa settings saved successfully'); } else { showStatusMessage('Error saving LoRa settings', false); } })
+      .catch(error => { showStatusMessage('Error saving LoRa settings: ' + error, false); });
+      return false;
     }
     // On page load, sync mode box
     window.onload = updateModeBox;
@@ -325,6 +373,136 @@ void handleGetMode() {
   server.send(200, "application/json", jsonResponse);
 }
 
+void handleSetLora() {
+  Serial.println("📡 Applying temporary LoRa values (not saving to EEPROM):");
+  
+  // Parse LoRa values with validation
+  if (server.hasArg("loraFrequency")) {
+    float newFreq = server.arg("loraFrequency").toFloat();
+    if (newFreq >= 863.0 && newFreq <= 870.0) {
+      loraFrequency = newFreq;
+      Serial.printf("  Frequency: %.1f MHz\n", loraFrequency);
+    } else {
+      Serial.println("  Invalid frequency (must be 863-870 MHz)");
+    }
+  }
+  
+  if (server.hasArg("loraPower")) {
+    int newPower = server.arg("loraPower").toInt();
+    if (newPower >= 2 && newPower <= 22) {
+      loraPower = newPower;
+      Serial.printf("  Power: %d dBm\n", loraPower);
+    } else {
+      Serial.println("  Invalid power (must be 2-22 dBm)");
+    }
+  }
+  
+  if (server.hasArg("loraSpreadingFactor")) {
+    int newSF = server.arg("loraSpreadingFactor").toInt();
+    if (newSF >= 7 && newSF <= 12) {
+      loraSpreadingFactor = newSF;
+      Serial.printf("  Spreading Factor: %d\n", loraSpreadingFactor);
+    } else {
+      Serial.println("  Invalid SF (must be 7-12)");
+    }
+  }
+  
+  if (server.hasArg("loraCodingRate")) {
+    int newCR = server.arg("loraCodingRate").toInt();
+    if (newCR >= 5 && newCR <= 8) {
+      loraCodingRate = newCR;
+      Serial.printf("  Coding Rate: %d\n", loraCodingRate);
+    } else {
+      Serial.println("  Invalid CR (must be 5-8)");
+    }
+  }
+  
+  if (server.hasArg("loraBandwidth")) {
+    float newBW = server.arg("loraBandwidth").toFloat();
+    // Validate against common bandwidth values
+    if (newBW >= 7.8 && newBW <= 500.0) {
+      loraBandwidth = newBW;
+      Serial.printf("  Bandwidth: %.1f kHz\n", loraBandwidth);
+    } else {
+      Serial.println("  Invalid bandwidth (must be 7.8-500 kHz)");
+    }
+  }
+
+  // Restart LoRa with new settings
+  Serial.println("📡 Restarting LoRa with new settings...");
+  if (getGlobalLoRaManager().restart()) {
+    Serial.println("✅ LoRa restarted successfully");
+    
+    // Send new settings to remote
+    Serial.println("📡 Sending new LoRa settings to remote...");
+    getGlobalLoRaManager().sendLoRaSettings();
+    
+    server.send(200, "text/plain", "OK");
+  } else {
+    Serial.println("❌ LoRa restart failed");
+    server.send(500, "text/plain", "LoRa restart failed");
+  }
+}
+
+void handleSaveLora() {
+  Serial.println("💾 Saving LoRa values to EEPROM...");
+  
+  // First apply the values (same validation as handleSetLora)
+  if (server.hasArg("loraFrequency")) {
+    float newFreq = server.arg("loraFrequency").toFloat();
+    if (newFreq >= 863.0 && newFreq <= 870.0) {
+      loraFrequency = newFreq;
+    }
+  }
+  
+  if (server.hasArg("loraPower")) {
+    int newPower = server.arg("loraPower").toInt();
+    if (newPower >= 2 && newPower <= 22) {
+      loraPower = newPower;
+    }
+  }
+  
+  if (server.hasArg("loraSpreadingFactor")) {
+    int newSF = server.arg("loraSpreadingFactor").toInt();
+    if (newSF >= 7 && newSF <= 12) {
+      loraSpreadingFactor = newSF;
+    }
+  }
+  
+  if (server.hasArg("loraCodingRate")) {
+    int newCR = server.arg("loraCodingRate").toInt();
+    if (newCR >= 5 && newCR <= 8) {
+      loraCodingRate = newCR;
+    }
+  }
+  
+  if (server.hasArg("loraBandwidth")) {
+    float newBW = server.arg("loraBandwidth").toFloat();
+    if (newBW >= 7.8 && newBW <= 500.0) {
+      loraBandwidth = newBW;
+    }
+  }
+  
+  // Save to EEPROM
+  saveGlobalSettings();
+  
+  // Restart LoRa with new settings
+  Serial.println("📡 Restarting LoRa with saved settings...");
+  bool restartSuccess = getGlobalLoRaManager().restart();
+  
+  if (restartSuccess) {
+    // Send new settings to remote
+    Serial.println("📡 Sending saved LoRa settings to remote...");
+    getGlobalLoRaManager().sendLoRaSettings();
+  }
+  
+  // Return JSON response
+  String jsonResponse = "{";
+  jsonResponse += "\"success\":" + String(restartSuccess ? "true" : "false");
+  jsonResponse += "}";
+  server.send(200, "application/json", jsonResponse);
+}
+
 void setupWebUI() {
   WiFi.softAP(ssid, password);
   server.on("/", handleRoot);
@@ -333,6 +511,8 @@ void setupWebUI() {
   server.on("/toggleManual", handleToggleManual);
   server.on("/switchProfile", handleSwitchProfile);
   server.on("/getMode", handleGetMode); // New endpoint
+  server.on("/setLora", HTTP_POST, handleSetLora); // New LoRa endpoints
+  server.on("/saveLora", HTTP_POST, handleSaveLora);
   server.begin();
 }
 

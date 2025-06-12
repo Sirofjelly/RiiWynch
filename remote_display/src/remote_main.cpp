@@ -5,6 +5,7 @@
 #include "Button.h"
 #include "DisplayManager_remote.h"
 #include "StateManager_remote.h"
+#include "Settings_remote.h"
 
 // ─────────────────────────────────────────
 //         BASIC FORWARD DECLARATIONS
@@ -17,6 +18,9 @@ void heartbeatTask(void *parameter);
 // Button callback wrappers
 void incPctSingle();
 void decPctSingle();
+
+// LoRa callbacks
+void onLoraSettingsReceived();
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -32,7 +36,7 @@ namespace Config {
     static const int SMOOTH_STEP = 5;
     
     // New constants for dead man's switch logic
-    static const unsigned long ARMING_DURATION_MS = 2000;
+    static const unsigned long ARMING_DURATION_MS = 1000;
     static const unsigned long KEEPALIVE_INTERVAL_MS = 500;
     static const unsigned long NO_BUTTON_TIMEOUT_MS = 1000;
     static const unsigned long HEARTBEAT_INTERVAL_MS = 500;
@@ -84,6 +88,15 @@ void onLoraDisplayUpdate(int percentage, float rssi) {
 
 void onLoraAckForValue(int percentage) {
     Serial.printf("[Remote] Received ACK from Main for VAL %d%%\n", percentage);
+}
+
+void onLoraSettingsReceived() {
+    Serial.println("[Remote] LoRa settings received from main - restarting LoRa module...");
+    if (loraManager.restart()) {
+        Serial.println("[Remote] LoRa module restarted successfully with new settings");
+    } else {
+        Serial.println("[Remote] Failed to restart LoRa module with new settings");
+    }
 }
 
 // ─────────────────────────────────────────
@@ -215,6 +228,9 @@ void setup() {
     pinMode(VEXT, OUTPUT); digitalWrite(VEXT, LOW);
     analogReadResolution(12);
 
+    // Load global LoRa settings
+    loadGlobalLoRaSettings();
+
     displayManager.begin();
     drawForState();
 
@@ -224,6 +240,7 @@ void setup() {
     
     loraManager.onDisplayUpdate(onLoraDisplayUpdate);
     loraManager.onAckForValue(onLoraAckForValue);
+    loraManager.onLoRaSettingsReceived(onLoraSettingsReceived);
 
     // --- Button Callbacks ---
     upButton.onPress(handleUpButtonPress);

@@ -1,12 +1,24 @@
 #include "LoRaManager.h"
 #include "HeartbeatManager.h"
+#include "Settings.h"
 #include <Arduino.h>
 
 LoRaManager::LoRaManager(StateManager& stateMgr, DisplayManager& displayMgr)
     : state(stateMgr), display(displayMgr), heartbeatManager(nullptr) {}
 
 bool LoRaManager::begin() {
-    return transceiver.begin();
+    // Use global LoRa settings from Settings.h
+    Serial.printf("[LoRa] Initializing with freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
+                  loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+}
+
+bool LoRaManager::restart() {
+    Serial.println("[LoRa] Restarting with new settings...");
+    // Use updated global LoRa settings
+    Serial.printf("[LoRa] New settings: freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
+                  loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
 }
 
 void LoRaManager::setHeartbeatManager(HeartbeatManager* hbMgr) {
@@ -102,6 +114,27 @@ void LoRaManager::sendDisplayPercentage(int percentage) {
         waitingForDspAck = true;
     } else {
         Serial.printf("[LORA TX] Failed to send DSP: %d%%\n", percentage);
+    }
+}
+
+void LoRaManager::sendLoRaSettings() {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::LORA_SETTINGS;
+    msg.source = RiiWynch::Protocol::DeviceID::MAIN_DISPLAY;
+    msg.packetCounter = packetCounter++;
+    
+    // Pack current LoRa settings into the message
+    msg.payload.loraSettings.frequency = loraFrequency;
+    msg.payload.loraSettings.power = (int16_t)loraPower;
+    msg.payload.loraSettings.spreadingFactor = (uint8_t)loraSpreadingFactor;
+    msg.payload.loraSettings.codingRate = (uint8_t)loraCodingRate;
+    msg.payload.loraSettings.bandwidth = loraBandwidth;
+
+    if (transceiver.transmit(msg)) {
+        Serial.printf("[LORA TX] Settings sent: freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
+                      loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    } else {
+        Serial.println("[LORA TX] Failed to send LoRa settings");
     }
 }
 
