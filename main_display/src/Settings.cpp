@@ -39,6 +39,10 @@ int loraSpreadingFactor = 8;      // good range/speed balance
 int loraCodingRate = 5;           // error correction
 float loraBandwidth = 125.0;      // kHz (standard)
 
+// Define persistent statistics
+unsigned long totalStarts = 0;
+unsigned long totalRuntimeSeconds = 0;
+
 void loadSettings() {
   // Begin preferences with "riiwynch" namespace in read-write mode
   if (!preferences.begin("riiwynch", false)) {
@@ -237,4 +241,43 @@ void saveGlobalSettings() {
     } else {
         Serial.println("⚠️ Failed to save one or more global settings to preferences.");
     }
+}
+
+void loadStats() {
+    if (!preferences.begin("riiwynch", false)) {
+        Serial.println("⚠️ Failed to initialize Preferences for stats");
+        return;
+    }
+    totalStarts = preferences.getULong("stats_starts", 0);
+    totalRuntimeSeconds = preferences.getULong("stats_runtime", 0);
+    preferences.end();
+    Serial.printf("📊 Loaded Stats - Starts: %lu, Runtime: %lu sec\n", totalStarts, totalRuntimeSeconds);
+}
+
+void saveStats() {
+    if (!preferences.begin("riiwynch", true)) { // open in read-write
+        Serial.println("⚠️ Failed to initialize Preferences for stats");
+        return;
+    }
+    preferences.putULong("stats_starts", totalStarts);
+    preferences.putULong("stats_runtime", totalRuntimeSeconds);
+    preferences.end();
+    Serial.println("📊 Stats saved.");
+}
+
+void incrementStarts() {
+    totalStarts++;
+    saveStats();
+}
+
+void addRuntime(unsigned long seconds) {
+    totalRuntimeSeconds += seconds;
+    saveStats();
+}
+
+void resetStats() {
+    totalStarts = 0;
+    totalRuntimeSeconds = 0;
+    saveStats();
+    Serial.println("📊 Stats have been reset.");
 }

@@ -26,6 +26,7 @@ public:
 private:
     State currentState = State::IDLE;
     unsigned long stateEnterTime = 0;
+    unsigned long lastRuntimeUpdateTime = 0;
 
     int targetPercentage;
     int displayedPercentage = 0;

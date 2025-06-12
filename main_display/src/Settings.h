@@ -20,6 +20,13 @@ void saveSettingsForProfile(int profile);
 void loadGlobalSettings();
 void saveGlobalSettings();
 
+// Declare statistics functions
+void loadStats();
+void saveStats();
+void incrementStarts();
+void addRuntime(unsigned long seconds);
+void resetStats();
+
 extern unsigned long starterRelayTime;
 extern int stage1SpeedPercentage;  // Target speed for stage 1 (5-100)
 extern unsigned long stage1Duration; // ms – ramp to stage1SpeedPercentage
@@ -39,3 +46,7 @@ extern int loraPower;            // dBm (2-22 for SX1262)
 extern int loraSpreadingFactor;  // 7-12
 extern int loraCodingRate;       // 5-8 
 extern float loraBandwidth;      // kHz (7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500)
+
+// Persistent statistics
+extern unsigned long totalStarts;
+extern unsigned long totalRuntimeSeconds;

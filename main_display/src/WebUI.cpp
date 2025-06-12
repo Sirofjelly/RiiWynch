@@ -28,6 +28,8 @@ extern StateManager state;
 extern int currentProfile; // Use the `extern` declaration from Settings.h
 extern DisplayManager display;
 extern const char* modeNames[4];
+extern unsigned long totalStarts;
+extern unsigned long totalRuntimeSeconds;
 
 // Global LoRa settings
 extern float loraFrequency;
@@ -40,6 +42,85 @@ extern float loraBandwidth;
 extern StateManager& getGlobalStateManager();
 extern class LoRaManager& getGlobalLoRaManager();
 
+void handleLoraPage() {
+  loadGlobalSettings(); // Load global LoRa settings
+
+  String html_content = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RiiWynch LoRa Settings</title>
+  <style>
+    body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; margin-top: 100px; }
+    .navbar { background-color: #222; overflow: hidden; position: fixed; top: 0; width: 100%; left: 0; z-index: 1000; }
+    .navbar a { float: left; display: block; color: #00ffff; text-align: center; padding: 14px 16px; text-decoration: none; font-size: 1.8em; }
+    .navbar a:hover { background-color: #ddd; color: black; }
+    .navbar a.active { background-color: #ff00ff; color: white; }
+    h2 { font-size: 3.3em; margin-bottom: 35px; }
+    h3 { font-size: 2.5em; margin: 35px 0 20px 0; color: #ff00ff; border-bottom: 2px solid #ff00ff; padding-bottom: 10px; }
+    .status-message { background-color: rgba(0, 255, 0, 0.2); color: #00ff00; padding: 18px; margin: 24px auto; border-radius: 13px; border: 2.75px solid #00ff00; max-width: 90%; font-size: 2em; display: none; }
+    .form-row { display: flex; align-items: center; justify-content: flex-start; margin: 18px auto; max-width: 900px; }
+    label { display: inline-block; width: 500px; text-align: right; margin-right: 40px; font-size: 2em; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    input[type="text"] { width: 5ch; min-width: 5ch; max-width: 5ch; padding: 11px; background: transparent; border: 2.75px solid #ff00ff; color: #00ffff; font-family: sans-serif; font-size: 2em; border-radius: 13px; text-align: center; margin-left: 0; }
+    .button { font-size: 2em; width: 260px; min-width: 10ch; max-width: 20ch; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: sans-serif; border-radius: 13px; margin: 10px 0 26px 0; cursor: pointer; display: inline-block; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <a href="/">Settings</a>
+    <a href="/lora" class="active">LoRa</a>
+    <a href="/stats">Stats</a>
+  </div>
+  <div id="statusMessage" class="status-message"></div>
+  <h3>Global LoRa Settings</h3>
+  <form id="loraSettingsForm" onsubmit="return false;">
+)rawliteral";
+
+  // Add LoRa settings form fields
+  html_content += "<div class=\"form-row\"><label>Frequency (MHz):</label><input name=\"loraFrequency\" type=\"text\" value=\"" + String(loraFrequency, 1) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Power (dBm):</label><input name=\"loraPower\" type=\"text\" value=\"" + String(loraPower) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Spreading Factor:</label><input name=\"loraSpreadingFactor\" type=\"text\" value=\"" + String(loraSpreadingFactor) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Coding Rate:</label><input name=\"loraCodingRate\" type=\"text\" value=\"" + String(loraCodingRate) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Bandwidth (kHz):</label><input name=\"loraBandwidth\" type=\"text\" value=\"" + String(loraBandwidth, 1) + "\"></div>";
+  
+  html_content += R"rawliteral(
+    <button type="button" class="button" onclick="applyLoRaSettings()">Apply LoRa</button>
+    <button type="button" class="button" onclick="saveLoRaSettings()">Save LoRa</button>
+  </form>
+
+  <script>
+    function showStatusMessage(message, isSuccess = true) {
+      const statusElem = document.getElementById('statusMessage');
+      statusElem.style.display = 'block';
+      statusElem.style.backgroundColor = isSuccess ? 'rgba(0, 255, 0, 0.2)' : 'rgba(255, 0, 0, 0.2)';
+      statusElem.style.borderColor = isSuccess ? '#00ff00' : '#ff0000';
+      statusElem.style.color = isSuccess ? '#00ff00' : '#ff0000';
+      statusElem.innerHTML = message;
+      setTimeout(() => { statusElem.style.display = 'none'; }, 5000);
+    }
+    function applyLoRaSettings() {
+      const formData = new FormData(document.getElementById('loraSettingsForm'));
+      fetch('/setLora', { method: 'POST', body: formData })
+      .then(response => response.text())
+      .then(data => { showStatusMessage('LoRa settings applied successfully!'); })
+      .catch(error => { showStatusMessage('Error applying LoRa settings: ' + error, false); });
+    }
+    function saveLoRaSettings() {
+      const form = document.getElementById('loraSettingsForm');
+      const formData = new FormData(form);
+      fetch('/saveLora', { method: 'POST', body: formData })
+      .then(response => response.json())
+      .then(data => { if(data.success) { showStatusMessage('LoRa settings saved successfully'); } else { showStatusMessage('Error saving LoRa settings', false); } })
+      .catch(error => { showStatusMessage('Error saving LoRa settings: ' + error, false); });
+      return false;
+    }
+  </script>
+</body>
+</html>)rawliteral";
+
+  server.send(200, "text/html", html_content);
+}
+
 void handleRoot() {
   if (manualMode) currentProfile = 3;
   loadSettingsForProfile(currentProfile); // Always load current profile's values
@@ -51,7 +132,11 @@ void handleRoot() {
 <head>
   <title>RiiWynch Settings</title>
   <style>
-    body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; }
+    body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; margin-top: 100px; }
+    .navbar { background-color: #222; overflow: hidden; position: fixed; top: 0; width: 100%; left: 0; z-index: 1000; }
+    .navbar a { float: left; display: block; color: #00ffff; text-align: center; padding: 14px 16px; text-decoration: none; font-size: 1.8em; }
+    .navbar a:hover { background-color: #ddd; color: black; }
+    .navbar a.active { background-color: #ff00ff; color: white; }
     h2 { font-size: 3.3em; margin-bottom: 35px; }
     h3 { font-size: 2.5em; margin: 35px 0 20px 0; color: #ff00ff; border-bottom: 2px solid #ff00ff; padding-bottom: 10px; }
     .status-message { background-color: rgba(0, 255, 0, 0.2); color: #00ff00; padding: 18px; margin: 24px auto; border-radius: 13px; border: 2.75px solid #00ff00; max-width: 90%; font-size: 2em; display: none; }
@@ -66,6 +151,11 @@ void handleRoot() {
   </style>
 </head>
 <body>
+  <div class="navbar">
+    <a href="/" class="active">Settings</a>
+    <a href="/lora">LoRa</a>
+    <a href="/stats">Stats</a>
+  </div>
   <h2>RiiWynch Engine Settings</h2>
   <div id="statusMessage" class="status-message"></div>
   <div class="mode-row"><input type="text" id="profileInput" value=")rawliteral";
@@ -91,23 +181,6 @@ void handleRoot() {
   html_content += R"rawliteral(
     <button type="button" class="button" onclick="applySettings()">Apply</button>
     <button type="button" class="button" onclick="saveSettings()">Save</button>
-  </form>
-
-  <div class="section-separator"></div>
-  <h3>Global LoRa Settings</h3>
-  <form id="loraSettingsForm" onsubmit="return false;">
-)rawliteral";
-
-  // Add LoRa settings form fields
-  html_content += "<div class=\"form-row\"><label>Frequency (MHz):</label><input name=\"loraFrequency\" type=\"text\" value=\"" + String(loraFrequency, 1) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Power (dBm):</label><input name=\"loraPower\" type=\"text\" value=\"" + String(loraPower) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Spreading Factor:</label><input name=\"loraSpreadingFactor\" type=\"text\" value=\"" + String(loraSpreadingFactor) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Coding Rate:</label><input name=\"loraCodingRate\" type=\"text\" value=\"" + String(loraCodingRate) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Bandwidth (kHz):</label><input name=\"loraBandwidth\" type=\"text\" value=\"" + String(loraBandwidth, 1) + "\"></div>";
-  
-  html_content += R"rawliteral(
-    <button type="button" class="button" onclick="applyLoRaSettings()">Apply LoRa</button>
-    <button type="button" class="button" onclick="saveLoRaSettings()">Save LoRa</button>
   </form>
 
   <script>
@@ -164,22 +237,6 @@ void handleRoot() {
           showStatusMessage('Switched to Mode ' + modeNames[data.manualMode ? 3 : data.profile]);
         })
         .catch(error => { showStatusMessage('Error switching mode: ' + error, false); });
-    }
-    function applyLoRaSettings() {
-      const formData = new FormData(document.getElementById('loraSettingsForm'));
-      fetch('/setLora', { method: 'POST', body: formData })
-      .then(response => response.text())
-      .then(data => { showStatusMessage('LoRa settings applied successfully!'); })
-      .catch(error => { showStatusMessage('Error applying LoRa settings: ' + error, false); });
-    }
-    function saveLoRaSettings() {
-      const form = document.getElementById('loraSettingsForm');
-      const formData = new FormData(form);
-      fetch('/saveLora', { method: 'POST', body: formData })
-      .then(response => response.json())
-      .then(data => { if(data.success) { showStatusMessage('LoRa settings saved successfully'); } else { showStatusMessage('Error saving LoRa settings', false); } })
-      .catch(error => { showStatusMessage('Error saving LoRa settings: ' + error, false); });
-      return false;
     }
     // On page load, sync mode box
     window.onload = updateModeBox;
@@ -503,9 +560,71 @@ void handleSaveLora() {
   server.send(200, "application/json", jsonResponse);
 }
 
+void handleResetStats() {
+  resetStats();
+  server.send(200, "text/plain", "OK");
+}
+
+void handleStats() {
+  unsigned long hours = totalRuntimeSeconds / 3600;
+  unsigned long minutes = (totalRuntimeSeconds % 3600) / 60;
+  unsigned long seconds = totalRuntimeSeconds % 60;
+
+  String html_content = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RiiWynch Statistics</title>
+  <style>
+    body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; margin-top: 100px; }
+    .navbar { background-color: #222; overflow: hidden; position: fixed; top: 0; width: 100%; left: 0; z-index: 1000; }
+    .navbar a { float: left; display: block; color: #00ffff; text-align: center; padding: 14px 16px; text-decoration: none; font-size: 1.8em; }
+    .navbar a:hover { background-color: #ddd; color: black; }
+    .navbar a.active { background-color: #ff00ff; color: white; }
+    h2 { font-size: 3.3em; margin-bottom: 35px; }
+    .stat-item { font-size: 2em; margin: 20px; }
+    .button { font-size: 2em; width: 260px; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: sans-serif; border-radius: 13px; margin-top: 40px; cursor: pointer; text-decoration: none; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <a href="/">Settings</a>
+    <a href="/lora">LoRa</a>
+    <a href="/stats" class="active">Stats</a>
+  </div>
+  <h2>Engine Statistics</h2>
+  <div class="stat-item">Total Starts: <span id="totalStarts">)rawliteral";
+  html_content += String(totalStarts);
+  html_content += R"rawliteral(</span></div>
+  <div class="stat-item">Total Runtime: <span id="totalRuntime">)rawliteral";
+  html_content += String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s";
+  html_content += R"rawliteral(</span></div>
+  <button type="button" class="button" onclick="resetStats()">Reset Stats</button>
+  <script>
+    function resetStats() {
+      if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
+        fetch('/resetStats', { method: 'POST' })
+        .then(response => {
+          if (response.ok) {
+            // Reload the page to show the reset values
+            location.reload();
+          } else {
+            alert('Error resetting statistics.');
+          }
+        });
+      }
+    }
+  </script>
+</body>
+</html>)rawliteral";
+  server.send(200, "text/html", html_content);
+}
+
 void setupWebUI() {
   WiFi.softAP(ssid, password);
   server.on("/", handleRoot);
+  server.on("/stats", handleStats);
+  server.on("/resetStats", HTTP_POST, handleResetStats);
   server.on("/set", HTTP_POST, handleSet);
   server.on("/save", HTTP_POST, handleSetDefault); // Change from "/set-default" to "/save"
   server.on("/toggleManual", handleToggleManual);
@@ -513,6 +632,7 @@ void setupWebUI() {
   server.on("/getMode", handleGetMode); // New endpoint
   server.on("/setLora", HTTP_POST, handleSetLora); // New LoRa endpoints
   server.on("/saveLora", HTTP_POST, handleSaveLora);
+  server.on("/lora", handleLoraPage);
   server.begin();
 }
 

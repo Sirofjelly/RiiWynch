@@ -69,6 +69,7 @@ void setup() {
   
   // Load global settings (LoRa settings)
   loadGlobalSettings();
+  loadStats();
   
   // Initialize ProfileManager first as it sets up the initial profile
   profileManager.begin();

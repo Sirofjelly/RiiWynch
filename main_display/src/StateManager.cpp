@@ -1,5 +1,6 @@
 #include "StateManager.h"
 #include <Arduino.h>
+#include "Settings.h"
 
 void StateManager::setState(State newState) {
     if (currentState != newState) {
@@ -19,6 +20,11 @@ void StateManager::update() {
     if (currentState == State::STOPPED) {
         if (millis() - stateEnterTime >= 5000) {
             setState(State::IDLE);
+        }
+    } else if (currentState == State::RUNNING) {
+        if (millis() - lastRuntimeUpdateTime >= 1000) {
+            addRuntime(1);
+            lastRuntimeUpdateTime = millis();
         }
     }
 }
@@ -77,6 +83,8 @@ void StateManager::updateDisplayStep() {
 void StateManager::start() {
     if (currentState == State::IDLE) {
         setState(State::RUNNING);
+        incrementStarts();
+        lastRuntimeUpdateTime = millis();
     }
 }
 
