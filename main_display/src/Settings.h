@@ -17,9 +17,10 @@ void loadSettingsForProfile(int profile);
 void saveSettingsForProfile(int profile);
 
 extern unsigned long starterRelayTime;
-extern unsigned long rampUpDuration;
-extern float rampUpExponent;
-extern unsigned long rampDownDuration;
+extern int stage1SpeedPercentage;  // Target speed for stage 1 (5-100)
+extern unsigned long stage1Duration; // ms – ramp to stage1SpeedPercentage
+extern unsigned long stage2Duration; // ms – ramp from stage1SpeedPercentage to 100%
+extern unsigned long stage3Duration; // ms – ramp from 100% down to target percentage
 extern int gasIdleAngle;
 extern int gasMaxAngle;
 extern int chokeAngle;

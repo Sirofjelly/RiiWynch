@@ -4,9 +4,10 @@ void setupStartup();
 void updateStartup(bool startPressed, bool stopPressed);
 
 extern unsigned long starterRelayTime;
-extern unsigned long rampUpDuration;
-extern unsigned long rampDownDuration;
-extern float rampUpExponent;
+extern int stage1SpeedPercentage;
+extern unsigned long stage1Duration;
+extern unsigned long stage2Duration;
+extern unsigned long stage3Duration;
 extern bool manualMode;
 extern bool startupInProgress;
 
@@ -14,8 +15,9 @@ enum StartupState {
   IDLE,
   WAIT_FOR_IDLE_REACHED,
   STARTER_ON,
-  RAMP_UP,
-  RAMP_DOWN_TO_TARGET,
+  RAMP_STAGE_1,
+  RAMP_STAGE_2,
+  RAMP_STAGE_3,
   MANUAL_CONTROL
 };
 

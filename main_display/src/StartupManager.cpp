@@ -4,6 +4,7 @@
 #include "Relays.h"
 #include "StateManager.h"
 #include "Settings.h"
+#include "StartupManager.h"
 
 const int START_RELAY_PIN = 41;
 
@@ -12,26 +13,23 @@ bool startupInProgress = false;
 extern bool manualMode;
 extern StateManager& getGlobalStateManager();
 
-enum StartupState {
-  IDLE,
-  WAIT_FOR_IDLE_REACHED,
-  STARTER_ON,
-  RAMP_UP,
-  RAMP_DOWN_TO_TARGET,
-  MANUAL_CONTROL
-};
+// Enumeration now defined in StartupManager.h
 
 StartupState currentState = IDLE;
 unsigned long stateStartTime = 0;
 int rampStartAngle = 0;
 int rampTargetAngle = 0;
 
-int calculateTargetAngle() {
-  int p = getGlobalStateManager().getTargetPercentage();
+int percentageToAngle(int p) {
   if (p < 5) return 0;
   if (p == 5) return gasIdleAngle;
   float step = float(p - 5) / 95.0;
   return gasIdleAngle + step * (gasMaxAngle - gasIdleAngle);
+}
+
+int calculateTargetAngle() {
+  int p = getGlobalStateManager().getTargetPercentage();
+  return percentageToAngle(p);
 }
 
 void setupStartup() {
@@ -85,49 +83,60 @@ void updateStartup(bool startPressed, bool stopPressed) {
         digitalWrite(START_RELAY_PIN, HIGH);
         stateStartTime = millis();
         if (manualMode) {
-          // Go directly to MANUAL_CONTROL after starter relay in manual mode
           currentState = MANUAL_CONTROL;
           startupInProgress = false;
-          return; // Prevent further state machine processing in this loop
+          return;
         } else {
+          // Prepare Stage 1
           rampStartAngle = gasIdleAngle;
-          rampTargetAngle = gasMaxAngle;
-          currentState = RAMP_UP;
+          rampTargetAngle = percentageToAngle(stage1SpeedPercentage);
+          currentState = RAMP_STAGE_1;
         }
       }
       break;
 
-    case RAMP_UP: {
-      if (manualMode) break; // never ramp in manual mode
-      {
-        float progress = float(millis() - stateStartTime) / rampUpDuration;
-        if (progress >= 1.0) {
-          gasServo.write(gasMaxAngle);
-          rampStartAngle = gasMaxAngle;
-          rampTargetAngle = calculateTargetAngle();
-          stateStartTime = millis();
-          currentState = RAMP_DOWN_TO_TARGET;
-        } else {
-          float shaped = pow(progress, rampUpExponent);
-          int angle = rampStartAngle + shaped * (rampTargetAngle - rampStartAngle);
-          gasServo.write(angle);
-        }
+    case RAMP_STAGE_1: {
+      if (manualMode) break;
+      float progress = float(millis() - stateStartTime) / stage1Duration;
+      if (progress >= 1.0f) {
+        gasServo.write(rampTargetAngle);
+        rampStartAngle = rampTargetAngle;
+        rampTargetAngle = gasMaxAngle; // 100%
+        stateStartTime = millis();
+        currentState = RAMP_STAGE_2;
+      } else {
+        int angle = rampStartAngle + progress * (rampTargetAngle - rampStartAngle);
+        gasServo.write(angle);
       }
       break;
     }
 
-    case RAMP_DOWN_TO_TARGET: {
-      if (manualMode) break; // never ramp in manual mode
-      {
-        float progress = float(millis() - stateStartTime) / rampDownDuration;
-        if (progress >= 1.0) {
-          gasServo.write(rampTargetAngle);
-          currentState = MANUAL_CONTROL;  // ✅ Allows post-start speed changes
-          startupInProgress = false;
-        } else {
-          int angle = rampStartAngle + progress * (rampTargetAngle - rampStartAngle);
-          gasServo.write(angle);
-        }
+    case RAMP_STAGE_2: {
+      if (manualMode) break;
+      float progress = float(millis() - stateStartTime) / stage2Duration;
+      if (progress >= 1.0f) {
+        gasServo.write(gasMaxAngle);
+        rampStartAngle = gasMaxAngle;
+        rampTargetAngle = calculateTargetAngle();
+        stateStartTime = millis();
+        currentState = RAMP_STAGE_3;
+      } else {
+        int angle = rampStartAngle + progress * (rampTargetAngle - rampStartAngle);
+        gasServo.write(angle);
+      }
+      break;
+    }
+
+    case RAMP_STAGE_3: {
+      if (manualMode) break;
+      float progress = float(millis() - stateStartTime) / stage3Duration;
+      if (progress >= 1.0f) {
+        gasServo.write(rampTargetAngle);
+        currentState = MANUAL_CONTROL;
+        startupInProgress = false;
+      } else {
+        int angle = rampStartAngle + progress * (rampTargetAngle - rampStartAngle);
+        gasServo.write(angle);
       }
       break;
     }

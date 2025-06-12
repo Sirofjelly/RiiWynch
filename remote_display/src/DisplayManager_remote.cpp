@@ -17,7 +17,7 @@ void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t
     const char* title = "START";
     switch (currentState) {
         case StateManager_remote::State::IDLE:
-            title = "IDLE";
+            title = "STOP";
             break;
         case StateManager_remote::State::ARMING:
             title = "ARMING";

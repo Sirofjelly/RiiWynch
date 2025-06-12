@@ -15,9 +15,10 @@ void saveSettingsForProfile(int profileIndex);
 Preferences preferences;
 
 unsigned long starterRelayTime = 1500;
-unsigned long rampUpDuration = 2000;
-float rampUpExponent = 3.00;
-unsigned long rampDownDuration = 1000;
+int stage1SpeedPercentage = 30;           // % of max speed (5-100)
+unsigned long stage1Duration = 1000;      // ms
+unsigned long stage2Duration = 2000;      // ms
+unsigned long stage3Duration = 1500;      // ms
 int gasIdleAngle = 15;
 int gasMaxAngle = 65;
 int chokeAngle = 55;
@@ -72,9 +73,10 @@ void loadSettingsForProfile(int profileIndex) {
         
         // Set default values for this profile
         starterRelayTime     = 1500;
-        rampUpDuration       = 2000;
-        rampUpExponent       = 3.00;
-        rampDownDuration     = 1000;
+        stage1SpeedPercentage = 30;
+        stage1Duration        = 1000;
+        stage2Duration        = 2000;
+        stage3Duration        = 1500;
         gasIdleAngle         = 15;
         gasMaxAngle          = 65;
         chokeAngle           = 55;
@@ -97,9 +99,10 @@ void loadSettingsForProfile(int profileIndex) {
     
     // Load settings from this profile's section
     starterRelayTime     = preferences.getULong(String(baseKey + "starter").c_str(), 1500);
-    rampUpDuration       = preferences.getULong(String(baseKey + "rampup").c_str(), 2000);
-    rampUpExponent       = preferences.getFloat(String(baseKey + "rampexp").c_str(), 3.0);
-    rampDownDuration     = preferences.getULong(String(baseKey + "rampdown").c_str(), 1000);
+    stage1SpeedPercentage = preferences.getInt(String(baseKey + "s1spd").c_str(), 30);
+    stage1Duration        = preferences.getULong(String(baseKey + "s1dur").c_str(), 1000);
+    stage2Duration        = preferences.getULong(String(baseKey + "s2dur").c_str(), 2000);
+    stage3Duration        = preferences.getULong(String(baseKey + "s3dur").c_str(), 1500);
     gasIdleAngle         = preferences.getInt(String(baseKey + "gasidle").c_str(), 15);
     gasMaxAngle          = preferences.getInt(String(baseKey + "gasmax").c_str(), 65);
     chokeAngle           = preferences.getInt(String(baseKey + "choke").c_str(), 55);
@@ -135,9 +138,10 @@ void saveSettingsForProfile(int profileIndex) {
 
     // Save all settings and check each result
     ok &= preferences.putULong(String(baseKey + "starter").c_str(), starterRelayTime);
-    ok &= preferences.putULong(String(baseKey + "rampup").c_str(), rampUpDuration);
-    ok &= preferences.putFloat(String(baseKey + "rampexp").c_str(), rampUpExponent);
-    ok &= preferences.putULong(String(baseKey + "rampdown").c_str(), rampDownDuration);
+    ok &= preferences.putInt(String(baseKey + "s1spd").c_str(), stage1SpeedPercentage);
+    ok &= preferences.putULong(String(baseKey + "s1dur").c_str(), stage1Duration);
+    ok &= preferences.putULong(String(baseKey + "s2dur").c_str(), stage2Duration);
+    ok &= preferences.putULong(String(baseKey + "s3dur").c_str(), stage3Duration);
     ok &= preferences.putInt(String(baseKey + "gasidle").c_str(), gasIdleAngle);
     ok &= preferences.putInt(String(baseKey + "gasmax").c_str(), gasMaxAngle);
     ok &= preferences.putInt(String(baseKey + "choke").c_str(), chokeAngle);

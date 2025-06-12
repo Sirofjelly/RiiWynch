@@ -13,9 +13,10 @@ WebServer server(80);
 
 // External variables
 extern unsigned long starterRelayTime;
-extern unsigned long rampUpDuration;
-extern float rampUpExponent;
-extern unsigned long rampDownDuration;
+extern int stage1SpeedPercentage;
+extern unsigned long stage1Duration;
+extern unsigned long stage2Duration;
+extern unsigned long stage3Duration;
 extern int gasIdleAngle;
 extern int gasMaxAngle;
 extern int chokeAngle;
@@ -62,9 +63,10 @@ void handleRoot() {
 )rawliteral";
 
   html_content += "<div class=\"form-row\"><label>Starter Relay Time (ms):</label><input name=\"starterRelayTime\" type=\"text\" value=\"" + String(starterRelayTime) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Ramp Up Duration (ms):</label><input name=\"rampUpDuration\" type=\"text\" value=\"" + String(rampUpDuration) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Ramp-Up Exponent:</label><input name=\"rampUpExponent\" type=\"text\" value=\"" + String(rampUpExponent, 2) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Ramp Down Duration (ms):</label><input name=\"rampDownDuration\" type=\"text\" value=\"" + String(rampDownDuration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Stage 1 Speed (%) :</label><input name=\"stage1Speed\" type=\"text\" value=\"" + String(stage1SpeedPercentage) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Stage 1 Time (ms):</label><input name=\"stage1Duration\" type=\"text\" value=\"" + String(stage1Duration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Stage 2 Time (ms):</label><input name=\"stage2Duration\" type=\"text\" value=\"" + String(stage2Duration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Stage 3 Time (ms):</label><input name=\"stage3Duration\" type=\"text\" value=\"" + String(stage3Duration) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Gas Idle Angle (°):</label><input name=\"gasIdleAngle\" type=\"text\" value=\"" + String(gasIdleAngle) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Gas Max Angle (°):</label><input name=\"gasMaxAngle\" type=\"text\" value=\"" + String(gasMaxAngle) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Choke Angle (°):</label><input name=\"chokeAngle\" type=\"text\" value=\"" + String(chokeAngle) + "\"></div>";
@@ -118,9 +120,10 @@ void handleRoot() {
         .then(data => {
           updateModeBox();
           document.querySelector('input[name="starterRelayTime"]').value = data.starterTime;
-          document.querySelector('input[name="rampUpDuration"]').value = data.rampUpDuration;
-          document.querySelector('input[name="rampUpExponent"]').value = data.rampUpExponent;
-          document.querySelector('input[name="rampDownDuration"]').value = data.rampDownDuration;
+          document.querySelector('input[name="stage1Duration"]').value = data.stage1Duration;
+          document.querySelector('input[name="stage1Speed"]').value = data.stage1Speed;
+          document.querySelector('input[name="stage2Duration"]').value = data.stage2Duration;
+          document.querySelector('input[name="stage3Duration"]').value = data.stage3Duration;
           document.querySelector('input[name="gasIdleAngle"]').value = data.gasIdleAngle;
           document.querySelector('input[name="gasMaxAngle"]').value = data.gasMaxAngle;
           document.querySelector('input[name="chokeAngle"]').value = data.chokeAngle;
@@ -152,20 +155,21 @@ void handleSet() {
     Serial.printf("  Starter Relay Time: %lu (was %lu)\n", starterRelayTime, oldStarterTime);
   }
   
-  if (server.hasArg("rampUpDuration")) {
-    rampUpDuration = server.arg("rampUpDuration").toInt();
+  if (server.hasArg("stage1Duration")) {
+    stage1Duration = server.arg("stage1Duration").toInt();
   }
   
-  if (server.hasArg("rampUpExponent")) {
+  if (server.hasArg("stage1Speed")) {
     // Convert to float with bounds checking
-    float newExp = server.arg("rampUpExponent").toFloat();
-    if (newExp > 0) { // Prevent division by zero
-      rampUpExponent = newExp;
-    }
+    stage1SpeedPercentage = server.arg("stage1Speed").toInt();
   }
   
-  if (server.hasArg("rampDownDuration")) {
-    rampDownDuration = server.arg("rampDownDuration").toInt();
+  if (server.hasArg("stage2Duration")) {
+    stage2Duration = server.arg("stage2Duration").toInt();
+  }
+  
+  if (server.hasArg("stage3Duration")) {
+    stage3Duration = server.arg("stage3Duration").toInt();
   }
   
   if (server.hasArg("gasIdleAngle")) {
@@ -206,20 +210,21 @@ void handleSetDefault() {
     Serial.printf("  Starter Relay Time: %lu (was %lu)\n", starterRelayTime, oldStarterTime);
   }
   
-  if (server.hasArg("rampUpDuration")) {
-    rampUpDuration = server.arg("rampUpDuration").toInt();
+  if (server.hasArg("stage1Duration")) {
+    stage1Duration = server.arg("stage1Duration").toInt();
   }
   
-  if (server.hasArg("rampUpExponent")) {
+  if (server.hasArg("stage1Speed")) {
     // Convert to float with bounds checking
-    float newExp = server.arg("rampUpExponent").toFloat();
-    if (newExp > 0) { // Prevent division by zero
-      rampUpExponent = newExp;
-    }
+    stage1SpeedPercentage = server.arg("stage1Speed").toInt();
   }
   
-  if (server.hasArg("rampDownDuration")) {
-    rampDownDuration = server.arg("rampDownDuration").toInt();
+  if (server.hasArg("stage2Duration")) {
+    stage2Duration = server.arg("stage2Duration").toInt();
+  }
+  
+  if (server.hasArg("stage3Duration")) {
+    stage3Duration = server.arg("stage3Duration").toInt();
   }
   
   if (server.hasArg("gasIdleAngle")) {
@@ -297,9 +302,10 @@ void handleSwitchProfile() {
     String jsonResponse = "{";
     jsonResponse += "\"profile\":" + String(currentProfile) + ","; // Correctly reflect the current profile
     jsonResponse += "\"starterTime\":" + String(starterRelayTime) + ",";
-    jsonResponse += "\"rampUpDuration\":" + String(rampUpDuration) + ",";
-    jsonResponse += "\"rampUpExponent\":" + String(rampUpExponent, 2) + ",";
-    jsonResponse += "\"rampDownDuration\":" + String(rampDownDuration) + ",";
+    jsonResponse += "\"stage1Duration\":" + String(stage1Duration) + ",";
+    jsonResponse += "\"stage1Speed\":" + String(stage1SpeedPercentage) + ",";
+    jsonResponse += "\"stage2Duration\":" + String(stage2Duration) + ",";
+    jsonResponse += "\"stage3Duration\":" + String(stage3Duration) + ",";
     jsonResponse += "\"gasIdleAngle\":" + String(gasIdleAngle) + ",";
     jsonResponse += "\"gasMaxAngle\":" + String(gasMaxAngle) + ",";
     jsonResponse += "\"chokeAngle\":" + String(chokeAngle) + ",";

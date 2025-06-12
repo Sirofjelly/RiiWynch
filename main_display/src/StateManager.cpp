@@ -73,7 +73,6 @@ void StateManager::updateDisplayStep() {
   lastUpdateTime = millis();
 }
 
-// Emergency Stop methods are now replaced by the state machine
 
 void StateManager::start() {
     if (currentState == State::IDLE) {

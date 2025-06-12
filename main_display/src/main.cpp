@@ -96,11 +96,17 @@ void loop() {
   // Update state machine
   state.update();
 
+  // Cache button and remote request states for this loop iteration
+  bool startRequested = isStartPressed() || loraManager.getStartMotorRequest();
+  bool stopRequested = isStopPressed() || loraManager.getStopMotorRequest();
+
   // Read button states
-  if (isStartPressed() || loraManager.getStartMotorRequest()) {
+  if (startRequested) {
+    Serial.println("Start button pressed or remote start requested");
     state.start();
   }
-  if (isStopPressed() || loraManager.getStopMotorRequest()) {
+  if (stopRequested) {
+    Serial.println("Stop button pressed or remote stop requested");
     state.stop();
   }
 
@@ -112,14 +118,13 @@ void loop() {
                state.getState() == StateManager::State::STOPPED);
   updateServos(chokePressed, brakePressed);
 
-  updateStartup(isStartPressed() || loraManager.getStartMotorRequest(), 
-                isStopPressed() || loraManager.getStopMotorRequest());  
+  updateStartup(startRequested, stopRequested);  
 
   handleWebUI();
 
   // Update managers
   profileManager.update();
-  profileManager.checkModeSwitch(isStopPressed() || loraManager.getStopMotorRequest());
+  profileManager.checkModeSwitch(stopRequested);
 
   loraManager.update();
   heartbeatManager.update();
@@ -138,7 +143,6 @@ void loop() {
 }
 
 void handleDisplayUpdates(bool isStopped) {
-  // STOP blinking
   static bool flashState = false;
   static unsigned long lastFlashTime = 0;
   static bool wasStopFlashing = false;
