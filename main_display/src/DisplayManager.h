@@ -9,7 +9,6 @@ public:
   void updateText(const char* text);  // ✅ Public flashing display
   void clear();                       // ✅ Public clear screen
   void init();
-  void blinkStopText(bool show);
   
   // Mode display protection methods
   void startModeDisplay(const char* modeText, unsigned long displayDuration = 1000);

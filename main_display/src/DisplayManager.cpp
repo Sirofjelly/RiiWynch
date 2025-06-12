@@ -44,7 +44,7 @@ void DisplayManager::updateText(const char* text) {
   
   u8g2.clearBuffer();
   RiiWynch::UI::drawFrame(u8g2);
-  // Use medium font and center for all mode labels (SURF, SKIM, SMOOTH, MANUAL)
+  // Use medium font and center for all mode labels (SURF, SKIM, SMOOTh, MANUAL)
   if (strcmp(text, "SURF") == 0 || strcmp(text, "SKIM") == 0 || strcmp(text, "SMOOTH") == 0 || strcmp(text, "MANUAL") == 0) {
     u8g2.setFont(u8g2_font_helvB18_tf); // Medium font
     int16_t width = u8g2.getStrWidth(text);
@@ -60,27 +60,6 @@ void DisplayManager::updateText(const char* text) {
 // ✅ NEW: Clear screen
 void DisplayManager::clear() {
   u8g2.clearDisplay();
-}
-
-void DisplayManager::blinkStopText(bool show) {
-  // Don't update if mode display is active
-  if (_modeDisplayActive) {
-    return;
-  }
-  
-  u8g2.clearBuffer();
-  RiiWynch::UI::drawFrame(u8g2);
-  // Do not draw the bar when blinking STOP
-  if (show) {
-    u8g2.setFont(u8g2_font_logisoso42_tf);
-    const char* text = "STOP";
-    int16_t width = u8g2.getStrWidth(text);
-    // Center vertically and horizontally
-    int16_t x = (128 - width) / 2;
-    int16_t y = 38 + (64-38)/2; // visually center in 64px height
-    u8g2.drawStr(x, y, text);
-  }
-  u8g2.sendBuffer();
 }
 
 // Mode display protection methods

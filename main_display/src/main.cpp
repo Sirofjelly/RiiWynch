@@ -102,11 +102,9 @@ void loop() {
 
   // Read button states
   if (startRequested) {
-    Serial.println("Start button pressed or remote start requested");
     state.start();
   }
   if (stopRequested) {
-    Serial.println("Stop button pressed or remote stop requested");
     state.stop();
   }
 
@@ -143,43 +141,20 @@ void loop() {
 }
 
 void handleDisplayUpdates(bool isStopped) {
-  static bool flashState = false;
-  static unsigned long lastFlashTime = 0;
-  static bool wasStopFlashing = false;
   static int lastSentDisplayPct = -1; // Track last sent percentage to avoid duplicates
 
-  if (isStopped) {
-    unsigned long now = millis();
-    if (now - lastFlashTime > 600) { // slower blink
-      flashState = !flashState;
-      lastFlashTime = now;
-    }
-    if (flashState) {
-      display.blinkStopText(true); // show STOP text only
-    } else {
-      display.blinkStopText(false); // hide STOP text, keep frame/bar
-    }
-    wasStopFlashing = true;
-  } else {
-    // Fix: recover display after stop is released
-    if (wasStopFlashing) {
-      display.update(state.getDisplayedPercentage());
-      wasStopFlashing = false;
-    }
-
-    // Screen updates - Now happens in both modes
-    if (state.needsDisplayUpdate()) {
-        state.updateDisplayStep();
-        int dispPct = state.getDisplayedPercentage();
-        display.update(dispPct);
-        
-        // Always send display percentage to remote via LoRa when it changes
-        // Main is authoritative, so remote should always sync to main's value
-        if (dispPct != lastSentDisplayPct) {
-            Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", dispPct);
-            loraManager.sendDisplayPercentage(dispPct);
-            lastSentDisplayPct = dispPct;
-        }
-    }
+  // Screen updates - Now happens in all modes
+  if (state.needsDisplayUpdate()) {
+      state.updateDisplayStep();
+      int dispPct = state.getDisplayedPercentage();
+      display.update(dispPct);
+      
+      // Always send display percentage to remote via LoRa when it changes
+      // Main is authoritative, so remote should always sync to main's value
+      if (dispPct != lastSentDisplayPct) {
+          Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", dispPct);
+          loraManager.sendDisplayPercentage(dispPct);
+          lastSentDisplayPct = dispPct;
+      }
   }
 }
