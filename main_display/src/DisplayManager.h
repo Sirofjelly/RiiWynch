@@ -15,6 +15,9 @@ public:
   void updateModeDisplay(); // Call this in main loop to handle timeout
   bool isModeDisplayActive(); // Check if mode display is currently active
 
+  // New: draw STOP or general status screen with small percentage and RSSI
+  void drawStopScreen(int percentage, float rssi);
+
 private:
   U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2;
   

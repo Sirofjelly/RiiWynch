@@ -22,6 +22,7 @@ public:
     void onDisplayUpdate(void (*callback)(int percentage, float rssi));
     void onAckForValue(void (*callback)(int percentage));
     void onLoRaSettingsReceived(void (*callback)()); // Callback when LoRa settings are received and applied
+    void onStopMotor(void (*callback)());
 
 private:
     void handleMessage(const RiiWynch::Protocol::Message& msg);
@@ -34,6 +35,7 @@ private:
     void (*_displayUpdateCallback)(int percentage, float rssi) = nullptr;
     void (*_ackForValueCallback)(int percentage) = nullptr;
     void (*_loraSettingsReceivedCallback)() = nullptr;
+    void (*_stopMotorCallback)() = nullptr;
     
     // State for resending VAL messages
     bool waitingForValAck = false;

@@ -150,19 +150,27 @@ void loop() {
 
 void handleDisplayUpdates(bool isStopped) {
   static int lastSentDisplayPct = -1; // Track last sent percentage to avoid duplicates
+  static bool wasStopped = false;     // Track previous stopped state
 
-  // Screen updates - Now happens in all modes
-  if (state.needsDisplayUpdate()) {
-      state.updateDisplayStep();
-      int dispPct = state.getDisplayedPercentage();
-      display.update(dispPct);
-      
-      // Always send display percentage to remote via LoRa when it changes
-      // Main is authoritative, so remote should always sync to main's value
-      if (dispPct != lastSentDisplayPct) {
-          Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", dispPct);
-          loraManager.sendDisplayPercentage(dispPct);
-          lastSentDisplayPct = dispPct;
+  int dispPct = state.getDisplayedPercentage();
+
+  if (isStopped) {
+      // Draw STOP screen with small percentage and RSSI info
+      display.drawStopScreen(dispPct, loraManager.getRSSI());
+  } else {
+      // Regular percentage display logic
+      if (state.needsDisplayUpdate() || wasStopped) {
+          state.updateDisplayStep();
+          display.update(dispPct);
       }
   }
+
+  // Always sync percentage to remote when it changes
+  if (dispPct != lastSentDisplayPct) {
+      Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", dispPct);
+      loraManager.sendDisplayPercentage(dispPct);
+      lastSentDisplayPct = dispPct;
+  }
+
+  wasStopped = isStopped;
 }

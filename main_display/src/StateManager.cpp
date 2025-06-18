@@ -1,13 +1,16 @@
 #include "StateManager.h"
 #include <Arduino.h>
 #include "Settings.h"
+#include "LoRaManager.h"
 
 void StateManager::setState(State newState) {
     if (currentState != newState) {
         currentState = newState;
         stateEnterTime = millis();
         if (newState == State::STOPPED) {
-            setDirectPercentage(0);
+            // Notify remote that the motor has stopped while keeping the last set percentage
+            extern LoRaManager& getGlobalLoRaManager();
+            getGlobalLoRaManager().sendStopMotor();
         }
     }
 }

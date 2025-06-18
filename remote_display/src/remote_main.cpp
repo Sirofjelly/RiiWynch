@@ -21,6 +21,7 @@ void decPctSingle();
 
 // LoRa callbacks
 void onLoraSettingsReceived();
+void onLoraStopMotor();
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -72,12 +73,6 @@ void onLoraDisplayUpdate(int percentage, float rssi) {
     Serial.printf("[LORA CB] DSP: %d%% (current state: %d, targetPct: %d, shownPct: %d)\n", 
                  percentage, (int)stateManager.getState(), stateManager.getTargetPercentage(), stateManager.getShownPercentage());
 
-    // If main display says percentage is 0, it has likely stopped.
-    // Force remote back to IDLE as a safety measure.
-    if (percentage == 0 && stateManager.getState() == StateManager_remote::State::CRUISING) {
-        stateManager.switchToIdle();
-    }
-
     if (stateManager.getState() != StateManager_remote::State::MENU) {
         stateManager.setTargetPercentage(percentage);
         Serial.printf("[Remote] Updated display to %d%% from main\n", percentage);
@@ -97,6 +92,11 @@ void onLoraSettingsReceived() {
     } else {
         Serial.println("[Remote] Failed to restart LoRa module with new settings");
     }
+}
+
+void onLoraStopMotor() {
+    Serial.println("[Remote] STOP_MOTOR received – switching to IDLE");
+    stateManager.switchToIdle();
 }
 
 // ─────────────────────────────────────────
@@ -241,6 +241,7 @@ void setup() {
     loraManager.onDisplayUpdate(onLoraDisplayUpdate);
     loraManager.onAckForValue(onLoraAckForValue);
     loraManager.onLoRaSettingsReceived(onLoraSettingsReceived);
+    loraManager.onStopMotor(onLoraStopMotor);
 
     // --- Button Callbacks ---
     upButton.onPress(handleUpButtonPress);

@@ -166,4 +166,21 @@ bool LoRaManager::getStopMotorRequest() {
         return true;
     }
     return false;
+}
+
+void LoRaManager::sendStopMotor() {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::STOP_MOTOR;
+    msg.source = RiiWynch::Protocol::DeviceID::MAIN_DISPLAY;
+    msg.packetCounter = packetCounter++;
+
+    if (transceiver.transmit(msg)) {
+        Serial.println("[LORA TX] STOP_MOTOR");
+    } else {
+        Serial.println("[LORA TX] Failed to send STOP_MOTOR");
+    }
+}
+
+float LoRaManager::getRSSI() {
+    return transceiver.getRSSI();
 } 

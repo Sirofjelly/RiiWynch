@@ -95,3 +95,40 @@ void DisplayManager::updateModeDisplay() {
 bool DisplayManager::isModeDisplayActive() {
   return _modeDisplayActive;
 }
+
+// ─────────────────────────────────────────
+//             STOP SCREEN
+// ─────────────────────────────────────────
+void DisplayManager::drawStopScreen(int percentage, float rssi) {
+  // If a mode label is currently shown, do not override it
+  if (_modeDisplayActive) {
+    return;
+  }
+
+  u8g2.clearBuffer();
+  RiiWynch::UI::drawFrame(u8g2);
+
+  // Title (large)
+  const char* title = "STOP";
+  u8g2.setFont(u8g2_font_logisoso28_tf);
+  int16_t titleWidth = u8g2.getStrWidth(title);
+  u8g2.drawStr((128 - titleWidth) / 2, 46, title);
+
+  // Top info bar
+  u8g2.setFont(u8g2_font_6x10_tf);
+
+  // Percentage small left
+  char pctBuf[8];
+  sprintf(pctBuf, "%d%%", percentage);
+  u8g2.drawStr(6, 13, pctBuf);
+
+  // RSSI center
+  char rssiBuf[10];
+  sprintf(rssiBuf, "%.0fdBm", rssi);
+  int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
+  int16_t rssiX = (128 - rssiWidth - 20) / 2;
+  u8g2.drawStr(rssiX, 13, rssiBuf);
+  RiiWynch::UI::drawSignalStrength(u8g2, rssiX + rssiWidth + 5, 13, rssi);
+
+  u8g2.sendBuffer();
+}
