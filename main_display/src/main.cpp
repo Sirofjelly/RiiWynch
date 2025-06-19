@@ -151,13 +151,22 @@ void loop() {
 void handleDisplayUpdates(bool isStopped) {
   static int lastSentDisplayPct = -1; // Track last sent percentage to avoid duplicates
   static bool wasStopped = false;     // Track previous stopped state
+  static bool lastModeActive = false; // Track mode display state
 
+  // Check if mode display is currently active
+  bool modeActive = display.isModeDisplayActive();
+  
   int dispPct = state.getDisplayedPercentage();
 
   if (isStopped) {
       // Draw STOP screen with small percentage and RSSI info
       display.drawStopScreen(dispPct, loraManager.getRSSI());
   } else {
+      // If the mode screen just finished, draw the percentage screen once
+      if (!modeActive && lastModeActive && !isStopped) {
+          display.update(dispPct, loraManager.getRSSI());
+      }
+      
       // Regular percentage display logic
       if (state.needsDisplayUpdate() || wasStopped) {
           state.updateDisplayStep();
@@ -173,4 +182,5 @@ void handleDisplayUpdates(bool isStopped) {
   }
 
   wasStopped = isStopped;
+  lastModeActive = modeActive;
 }
