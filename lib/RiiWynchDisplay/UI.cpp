@@ -11,17 +11,6 @@ void drawFrame(U8G2& u8g2) {
     u8g2.setDrawColor(1); // Set color back to white for other elements
 }
 
-void drawBar(U8G2& u8g2, int percentage) {
-    int barWidth = (percentage * 116) / 100;
-    barWidth = constrain(barWidth, 0, 116);
-    if (barWidth > 0) {
-        // Draw the filled part of the bar
-        u8g2.drawRBox(6, 51, barWidth, 6, barWidth < 6 ? barWidth / 2 : 3);
-    }
-    // Draw the outer frame of the bar
-    u8g2.drawRFrame(5, 50, 118, 8, 3);
-}
-
 void drawSignalStrength(U8G2& u8g2, int x, int y, float rssi) {
     const int barWidth = 4;
     const int barSpacing = 2;

@@ -14,7 +14,7 @@ void DisplayManager::begin() {
   u8g2.begin();
 }
 
-void DisplayManager::update(int percentage) {
+void DisplayManager::update(int percentage, float rssi) {
   // Don't update if mode display is active
   if (_modeDisplayActive) {
     return;
@@ -23,14 +23,29 @@ void DisplayManager::update(int percentage) {
   u8g2.clearBuffer();
   RiiWynch::UI::drawFrame(u8g2);
 
-  u8g2.setFont(u8g2_font_logisoso42_tf);
-  char text[6];
-  if (percentage == 0) snprintf(text, sizeof(text), "STOP");
-  else snprintf(text, sizeof(text), "%d%%", percentage);
+  // ─── Top status bar ──────────────────────────────────────────────
+  u8g2.setFont(u8g2_font_6x10_tf);
 
-  int16_t width = u8g2.getStrWidth(text);
-  u8g2.drawStr((128 - width) / 2, 47, text);
-  RiiWynch::UI::drawBar(u8g2, percentage);
+  // Percentage (small) on the left
+  char pctBuf[8];
+  snprintf(pctBuf, sizeof(pctBuf), "%d%%", percentage);
+  u8g2.drawStr(6, 13, pctBuf);
+
+  // RSSI (small) centred with signal icon to the right
+  char rssiBuf[10];
+  snprintf(rssiBuf, sizeof(rssiBuf), "%.0fdBm", rssi);
+  int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
+  int16_t rssiX = (128 - rssiWidth - 20) / 2;
+  u8g2.drawStr(rssiX, 13, rssiBuf);
+  RiiWynch::UI::drawSignalStrength(u8g2, rssiX + rssiWidth + 5, 13, rssi);
+
+  // ─── Main large value ────────────────────────────────────────────
+  u8g2.setFont(u8g2_font_logisoso38_tf);
+  char mainText[6];
+  snprintf(mainText, sizeof(mainText), "%d%%", percentage);
+
+  int16_t width = u8g2.getStrWidth(mainText);
+  u8g2.drawStr((128 - width) / 2, 55, mainText);
 
   u8g2.sendBuffer();
 }

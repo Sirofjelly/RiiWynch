@@ -62,7 +62,7 @@ void setup() {
   setupStartup();
   setupWebUI();
   display.begin();
-  display.update(state.getDisplayedPercentage());
+  display.update(state.getDisplayedPercentage(), loraManager.getRSSI());
 
   // Initialize managers
   Serial.println("Initializing managers...");
@@ -161,7 +161,7 @@ void handleDisplayUpdates(bool isStopped) {
       // Regular percentage display logic
       if (state.needsDisplayUpdate() || wasStopped) {
           state.updateDisplayStep();
-          display.update(dispPct);
+          display.update(dispPct, loraManager.getRSSI());
       }
   }
 

@@ -5,7 +5,7 @@ class DisplayManager {
 public:
   DisplayManager();
   void begin();
-  void update(int percentage);
+  void update(int percentage, float rssi);
   void updateText(const char* text);  // ✅ Public flashing display
   void clear();                       // ✅ Public clear screen
   void init();
