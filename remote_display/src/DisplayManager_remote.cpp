@@ -46,7 +46,6 @@ void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t
     int rssiWidth = u8g2.getStrWidth(rssiBuf);
     int rssiX = (128 - rssiWidth - 20) / 2;
     u8g2.drawStr(rssiX, 13, rssiBuf);
-    RiiWynch::UI::drawSignalStrength(u8g2, rssiX + rssiWidth + 5, 13, rssi);
 
     // Battery
     char batBuf[8];
@@ -61,14 +60,11 @@ void DisplayManager_remote::drawMenuScreen(int percentage) {
     RiiWynch::UI::drawFrame(u8g2);
     
     char txt[6];
-    if (percentage == 0) strcpy(txt, "STOP");
-    else sprintf(txt, "%d%%", percentage);
+    sprintf(txt, "%d%%", percentage);
     
-    u8g2.setFont(u8g2_font_logisoso42_tf);
+    u8g2.setFont(u8g2_font_logisoso38_tf);
     int w = u8g2.getStrWidth(txt);
-    u8g2.drawStr((128 - w) / 2, 47, txt);
-    
-    RiiWynch::UI::drawBar(u8g2, percentage);
+    u8g2.drawStr((128 - w) / 2, 53, txt);
     
     u8g2.sendBuffer();
 } 

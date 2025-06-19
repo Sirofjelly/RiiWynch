@@ -11,21 +11,5 @@ void drawFrame(U8G2& u8g2) {
     u8g2.setDrawColor(1); // Set color back to white for other elements
 }
 
-void drawSignalStrength(U8G2& u8g2, int x, int y, float rssi) {
-    const int barWidth = 4;
-    const int barSpacing = 2;
-    const int maxHeight = 8;
-
-    // Determine height of each bar based on RSSI thresholds
-    int bar1Height = (rssi > -105) ? maxHeight / 3 : 0;
-    int bar2Height = (rssi > -90) ? (maxHeight * 2) / 3 : 0;
-    int bar3Height = (rssi > -75) ? maxHeight : 0;
-
-    // Draw the three bars, adjusting for y-position since height grows upwards
-    if (bar1Height > 0) u8g2.drawBox(x, y - bar1Height, barWidth, bar1Height);
-    if (bar2Height > 0) u8g2.drawBox(x + barWidth + barSpacing, y - bar2Height, barWidth, bar2Height);
-    if (bar3Height > 0) u8g2.drawBox(x + (barWidth + barSpacing) * 2, y - bar3Height, barWidth, bar3Height);
-}
-
 } // namespace UI
 } // namespace RiiWynch 

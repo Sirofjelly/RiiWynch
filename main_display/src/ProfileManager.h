@@ -15,7 +15,6 @@ public:
     const char* getCurrentModeName() const;
     bool isManualMode() const;
     void checkModeSwitch(bool stopPressed);
-    void showModeOnReconnect(); // Show current mode when remote reconnects
     
 private:
     // References to other managers

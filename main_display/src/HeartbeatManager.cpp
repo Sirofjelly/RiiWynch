@@ -51,15 +51,6 @@ void HeartbeatManager::update() {
 void HeartbeatManager::onHeartbeatReceived() {
     // Take mutex before accessing shared heartbeat variables
     if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        if (!remoteConnected) {
-            Serial.println("Remote (re)connected.");
-            // No longer need to clear emergency stop here, as STOPPED state will timeout to IDLE
-            // state.setEmergencyStop(false); // Clear emergency stop on reconnect
-            // Show current mode when remote reconnects
-            if (profileManager) {
-                profileManager->showModeOnReconnect();
-            }
-        }
         lastHeartbeatTime = millis();
         remoteConnected = true;
         xSemaphoreGive(heartbeatMutex);

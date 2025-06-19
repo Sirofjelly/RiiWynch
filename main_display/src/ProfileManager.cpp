@@ -76,14 +76,6 @@ bool ProfileManager::isManualMode() const {
     return manualMode;
 }
 
-void ProfileManager::showModeOnReconnect() {
-    if (manualMode) {
-        display.startModeDisplay(modeNames[3], 1500); // MANUAL - show for 1.5 seconds
-    } else {
-        display.startModeDisplay(modeNames[currentProfile], 1500); // Show current mode for 1.5 seconds
-    }
-}
-
 void ProfileManager::loadProfile(int profileIndex) {
     loadSettingsForProfile(profileIndex);
 }

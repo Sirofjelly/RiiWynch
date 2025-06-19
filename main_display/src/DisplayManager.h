@@ -5,7 +5,7 @@ class DisplayManager {
 public:
   DisplayManager();
   void begin();
-  void update(int percentage, float rssi);
+  void update(int percentage, float rssi, const char* mode, bool isConnected);
   void updateText(const char* text);  // ✅ Public flashing display
   void clear();                       // ✅ Public clear screen
   void init();
@@ -16,7 +16,7 @@ public:
   bool isModeDisplayActive(); // Check if mode display is currently active
 
   // New: draw STOP or general status screen with small percentage and RSSI
-  void drawStopScreen(int percentage, float rssi);
+  void drawStopScreen(int percentage, float rssi, const char* mode, bool isConnected);
 
 private:
   U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2;

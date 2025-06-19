@@ -41,6 +41,10 @@ LoRaManager& getGlobalLoRaManager() {
   return loraManager;
 }
 
+ProfileManager& getGlobalProfileManager() {
+  return profileManager;
+}
+
 // Function prototype for handleDisplayUpdates
 void handleDisplayUpdates(bool isStopped);
 
@@ -62,7 +66,7 @@ void setup() {
   setupStartup();
   setupWebUI();
   display.begin();
-  display.update(state.getDisplayedPercentage(), loraManager.getRSSI());
+  display.update(state.getDisplayedPercentage(), loraManager.getRSSI(), profileManager.getCurrentModeName(), heartbeatManager.isRemoteConnected());
 
   // Initialize managers
   Serial.println("Initializing managers...");
@@ -157,20 +161,22 @@ void handleDisplayUpdates(bool isStopped) {
   bool modeActive = display.isModeDisplayActive();
   
   int dispPct = state.getDisplayedPercentage();
+  const char* currentMode = profileManager.getCurrentModeName();
+  bool isConnected = heartbeatManager.isRemoteConnected();
 
   if (isStopped) {
-      // Draw STOP screen with small percentage and RSSI info
-      display.drawStopScreen(dispPct, loraManager.getRSSI());
+      // Draw STOP screen with mode and connection info
+      display.drawStopScreen(dispPct, loraManager.getRSSI(), currentMode, isConnected);
   } else {
       // If the mode screen just finished, draw the percentage screen once
       if (!modeActive && lastModeActive && !isStopped) {
-          display.update(dispPct, loraManager.getRSSI());
+          display.update(dispPct, loraManager.getRSSI(), currentMode, isConnected);
       }
       
       // Regular percentage display logic
       if (state.needsDisplayUpdate() || wasStopped) {
           state.updateDisplayStep();
-          display.update(dispPct, loraManager.getRSSI());
+          display.update(dispPct, loraManager.getRSSI(), currentMode, isConnected);
       }
   }
 

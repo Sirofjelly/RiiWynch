@@ -14,7 +14,7 @@ void DisplayManager::begin() {
   u8g2.begin();
 }
 
-void DisplayManager::update(int percentage, float rssi) {
+void DisplayManager::update(int percentage, float rssi, const char* mode, bool isConnected) {
   // Don't update if mode display is active
   if (_modeDisplayActive) {
     return;
@@ -26,18 +26,21 @@ void DisplayManager::update(int percentage, float rssi) {
   // ─── Top status bar ──────────────────────────────────────────────
   u8g2.setFont(u8g2_font_6x10_tf);
 
-  // Percentage (small) on the left
-  char pctBuf[8];
-  snprintf(pctBuf, sizeof(pctBuf), "%d%%", percentage);
-  u8g2.drawStr(6, 13, pctBuf);
+  // Mode name (small) on the left - replaces percentage
+  u8g2.drawStr(6, 13, mode);
 
-  // RSSI (small) centred with signal icon to the right
-  char rssiBuf[10];
-  snprintf(rssiBuf, sizeof(rssiBuf), "%.0fdBm", rssi);
-  int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
-  int16_t rssiX = (128 - rssiWidth - 20) / 2;
-  u8g2.drawStr(rssiX, 13, rssiBuf);
-  RiiWynch::UI::drawSignalStrength(u8g2, rssiX + rssiWidth + 5, 13, rssi);
+  // RSSI (small) on the right side
+  if (isConnected) {
+    char rssiBuf[10];
+    snprintf(rssiBuf, sizeof(rssiBuf), "%.0fdBm", rssi);
+    int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
+    u8g2.drawStr(128 - rssiWidth - 6, 13, rssiBuf);
+  } else {
+    // Show disconnected icon instead of RSSI when not connected
+    const char* noRemoteText = "DISCONNECTED";
+    int16_t noRemoteWidth = u8g2.getStrWidth(noRemoteText);
+    u8g2.drawStr(128 - noRemoteWidth - 6, 13, noRemoteText);
+  }
 
   // ─── Main large value ────────────────────────────────────────────
   u8g2.setFont(u8g2_font_logisoso38_tf);
@@ -114,7 +117,7 @@ bool DisplayManager::isModeDisplayActive() {
 // ─────────────────────────────────────────
 //             STOP SCREEN
 // ─────────────────────────────────────────
-void DisplayManager::drawStopScreen(int percentage, float rssi) {
+void DisplayManager::drawStopScreen(int percentage, float rssi, const char* mode, bool isConnected) {
   // If a mode label is currently shown, do not override it
   if (_modeDisplayActive) {
     return;
@@ -132,18 +135,21 @@ void DisplayManager::drawStopScreen(int percentage, float rssi) {
   // Top info bar
   u8g2.setFont(u8g2_font_6x10_tf);
 
-  // Percentage small left
-  char pctBuf[8];
-  sprintf(pctBuf, "%d%%", percentage);
-  u8g2.drawStr(6, 13, pctBuf);
+  // Mode name small left - replaces percentage
+  u8g2.drawStr(6, 13, mode);
 
-  // RSSI center
-  char rssiBuf[10];
-  sprintf(rssiBuf, "%.0fdBm", rssi);
-  int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
-  int16_t rssiX = (128 - rssiWidth - 20) / 2;
-  u8g2.drawStr(rssiX, 13, rssiBuf);
-  RiiWynch::UI::drawSignalStrength(u8g2, rssiX + rssiWidth + 5, 13, rssi);
+  // RSSI on the right side
+  if (isConnected) {
+    char rssiBuf[10];
+    sprintf(rssiBuf, "%.0fdBm", rssi);
+    int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
+    u8g2.drawStr(128 - rssiWidth - 6, 13, rssiBuf);
+  } else {
+    // Show disconnected icon instead of RSSI when not connected
+    const char* noRemote = "No Remote";
+    int16_t noRemoteWidth = u8g2.getStrWidth(noRemote);
+    u8g2.drawStr(128 - noRemoteWidth - 6, 13, noRemote);
+  }
 
   u8g2.sendBuffer();
 }

@@ -1,7 +1,11 @@
 #include "LoRaManager.h"
 #include "HeartbeatManager.h"
+#include "ProfileManager.h"
 #include "Settings.h"
 #include <Arduino.h>
+
+// Forward declarations for global accessors
+extern ProfileManager& getGlobalProfileManager();
 
 LoRaManager::LoRaManager(StateManager& stateMgr, DisplayManager& displayMgr)
     : state(stateMgr), display(displayMgr), heartbeatManager(nullptr) {}
@@ -53,7 +57,7 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
             if (heartbeatManager && heartbeatManager->isRemoteConnected()) {
                 Serial.printf("[LORA RX] VAL: %d%%\n", msg.payload.percentage);
                 state.setDirectPercentage(msg.payload.percentage);
-                display.update(msg.payload.percentage, getRSSI());
+                display.update(msg.payload.percentage, getRSSI(), getGlobalProfileManager().getCurrentModeName(), heartbeatManager->isRemoteConnected());
                 sendAck(RiiWynch::Protocol::MessageType::ACK_VAL, msg.payload.percentage);
                 
                 // Also send a DSP update back to confirm the state
