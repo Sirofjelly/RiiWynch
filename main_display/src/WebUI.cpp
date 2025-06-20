@@ -65,6 +65,7 @@ void handleLoraPage() {
     label { display: inline-block; width: 500px; text-align: right; margin-right: 40px; font-size: 2em; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     input[type="text"] { width: 5ch; min-width: 5ch; max-width: 5ch; padding: 11px; background: transparent; border: 2.75px solid #ff00ff; color: #00ffff; font-family: sans-serif; font-size: 2em; border-radius: 13px; text-align: center; margin-left: 0; }
     .button { font-size: 2em; width: 260px; min-width: 10ch; max-width: 20ch; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: sans-serif; border-radius: 13px; margin: 10px 0 26px 0; cursor: pointer; display: inline-block; white-space: nowrap; }
+    .footer { font-size: 1.2em; color: #888; text-align: center; margin-top: 50px; }
   </style>
 </head>
 <body>
@@ -89,6 +90,8 @@ void handleLoraPage() {
     <button type="button" class="button" onclick="applyLoRaSettings()">Apply LoRa</button>
     <button type="button" class="button" onclick="saveLoRaSettings()">Save LoRa</button>
   </form>
+
+  <div class="footer">Gmacht mit &lt;3 vom Silvan</div>
 
   <script>
     function showStatusMessage(message, isSuccess = true) {
@@ -151,6 +154,7 @@ void handleRoot() {
     .mode-btn-row { display: flex; justify-content: center; margin: 10px auto 26px auto; }
     #profileInput { width: 260px; min-width: 10ch; max-width: 20ch; font-size: 2em; }
     .section-separator { margin: 40px 0; }
+    .footer { font-size: 1.2em; color: #888; text-align: center; margin-top: 50px; }
   </style>
 </head>
 <body>
@@ -186,6 +190,8 @@ void handleRoot() {
     <button type="button" class="button" onclick="applySettings()">Apply</button>
     <button type="button" class="button" onclick="saveSettings()">Save</button>
   </form>
+
+  <div class="footer">Gmacht mit &lt;3 vom Silvan</div>
 
   <script>
     const modeNames = ["SURF", "SKIM", "SMOOTH", "MANUAL"];
@@ -579,6 +585,7 @@ void handleStats() {
     h2 { font-size: 3.3em; margin-bottom: 35px; }
     .stat-item { font-size: 2em; margin: 20px; }
     .button { font-size: 2em; width: 260px; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: sans-serif; border-radius: 13px; margin-top: 40px; cursor: pointer; text-decoration: none; display: inline-block; }
+    .footer { font-size: 1.2em; color: #888; text-align: center; margin-top: 50px; }
   </style>
 </head>
 <body>
@@ -595,6 +602,7 @@ void handleStats() {
   html_content += String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s";
   html_content += R"rawliteral(</span></div>
   <button type="button" class="button" onclick="resetStats()">Reset Stats</button>
+  <div class="footer">Gmacht mit &lt;3 vom Silvan</div>
   <script>
     function resetStats() {
       if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
