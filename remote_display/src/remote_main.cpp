@@ -63,6 +63,7 @@ unsigned long lastDisplayUpdate = 0;
 unsigned long armingStartTime = 0;
 unsigned long noButtonPressStartTime = 0;
 unsigned long lastKeepaliveTime = 0;
+bool stopDelayActive = false; // Flag for delayed stop functionality
 
 // ─────────────────────────────────────────
 //           LORA CALLBACKS
@@ -97,6 +98,7 @@ void onLoraSettingsReceived() {
 void onLoraStopMotor() {
     Serial.println("[Remote] STOP_MOTOR received – switching to IDLE");
     stateManager.switchToIdle();
+    stopDelayActive = false; // Reset delay flag when ride ends
 }
 
 // ─────────────────────────────────────────
@@ -189,7 +191,7 @@ void drawForState() {
         case StateManager_remote::State::IDLE:
         case StateManager_remote::State::ARMING:
         case StateManager_remote::State::CRUISING:
-             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState());
+             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState(), stopDelayActive);
             break;
         case StateManager_remote::State::MENU:
             displayManager.drawMenuScreen(stateManager.getShownPercentage());
@@ -268,7 +270,31 @@ void loop() {
 
     switch (stateManager.getState()) {
         case StateManager_remote::State::IDLE: {
-            if (anyButtonPressed) {
+            // Check for both buttons pressed to activate delay
+            static unsigned long bothButtonsStartTime = 0;
+            static bool dualButtonProcessed = false;
+            
+            if (upButton.isPressed() && downButton.isPressed()) {
+                // Both buttons pressed
+                if (bothButtonsStartTime == 0) {
+                    bothButtonsStartTime = millis();
+                    dualButtonProcessed = false;
+                } else if (millis() - bothButtonsStartTime >= 500 && !dualButtonProcessed) {
+                    // After 100ms of both buttons being pressed, toggle delay
+                    stopDelayActive = !stopDelayActive;
+                    dualButtonProcessed = true;
+                    if (stopDelayActive) {
+                        Serial.println("[Remote] Delay activated for next ride");
+                    } else {
+                        Serial.println("[Remote] Delay deactivated");
+                    }
+                }
+            } else if (!upButton.isPressed() && !downButton.isPressed()) {
+                // No buttons pressed - reset states
+                bothButtonsStartTime = 0;
+                dualButtonProcessed = false;
+            } else if (anyButtonPressed && bothButtonsStartTime == 0) {
+                // Single button pressed (and no dual button sequence in progress)
                 stateManager.switchToArming();
                 armingStartTime = millis();
                 Serial.println("IDLE → ARMING");
@@ -303,12 +329,21 @@ void loop() {
                     Serial.println("KEEPALIVE sent");
                 }
             } else { // No buttons are pressed
-                if (noButtonPressStartTime == 0) {
-                    // Start the timer
-                    noButtonPressStartTime = millis();
-                    Serial.println("No button press timer started...");
-                } else if (millis() - noButtonPressStartTime >= Config::NO_BUTTON_TIMEOUT_MS) {
-                    Serial.println("CRUISING → IDLE (STOP_MOTOR sent)");
+                if (stopDelayActive) {
+                    // Use delay logic when delay is active
+                    if (noButtonPressStartTime == 0) {
+                        // Start the timer
+                        noButtonPressStartTime = millis();
+                        Serial.println("No button press timer started (with delay)...");
+                    } else if (millis() - noButtonPressStartTime >= Config::NO_BUTTON_TIMEOUT_MS) {
+                        Serial.println("CRUISING → IDLE (STOP_MOTOR sent after delay)");
+                        loraManager.sendStopMotor();
+                        stateManager.switchToIdle();
+                        stopDelayActive = false; // Reset delay flag when ride ends
+                    }
+                } else {
+                    // Immediate stop when delay is not active
+                    Serial.println("CRUISING → IDLE (STOP_MOTOR sent immediately)");
                     loraManager.sendStopMotor();
                     stateManager.switchToIdle();
                 }

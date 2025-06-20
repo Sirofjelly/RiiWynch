@@ -8,7 +8,7 @@ void DisplayManager_remote::begin() {
     u8g2.begin();
 }
 
-void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState) {
+void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState, bool showDelay) {
     u8g2.clearBuffer();
     RiiWynch::UI::drawFrame(u8g2);
     
@@ -51,6 +51,14 @@ void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t
     char batBuf[8];
     sprintf(batBuf, "%.2fV", battery_mv / 1000.0);
     u8g2.drawStr(128 - u8g2.getStrWidth(batBuf) - 6, 13, batBuf);
+    
+    // Delay indicator at bottom center
+    if (showDelay) {
+        u8g2.setFont(u8g2_font_6x10_tf);
+        const char* delayText = "1s Delay";
+        int delayWidth = u8g2.getStrWidth(delayText);
+        u8g2.drawStr((128 - delayWidth) / 2, 58, delayText);
+    }
     
     u8g2.sendBuffer();
 }
