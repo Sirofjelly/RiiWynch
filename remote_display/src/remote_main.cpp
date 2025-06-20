@@ -41,6 +41,9 @@ namespace Config {
     static const unsigned long KEEPALIVE_INTERVAL_MS = 500;
     static const unsigned long NO_BUTTON_TIMEOUT_MS = 1000;
     static const unsigned long HEARTBEAT_INTERVAL_MS = 500;
+    // Dual-button gesture timings
+    static const unsigned long DUAL_PRESS_WINDOW_MS = 150;    // Time to wait for 2nd button
+    static const unsigned long DELAY_HOLD_MS      = 600;    // Hold time to toggle delay
 }
 
 // ─── Managers and Components ───
@@ -64,6 +67,13 @@ unsigned long armingStartTime = 0;
 unsigned long noButtonPressStartTime = 0;
 unsigned long lastKeepaliveTime = 0;
 bool stopDelayActive = false; // Flag for delayed stop functionality
+
+// ─── Dual-button gesture FSM ───
+enum class DualPressState { IDLE_WAIT, FIRST_DOWN, BOTH_DOWN };
+static DualPressState dualState = DualPressState::IDLE_WAIT;
+static unsigned long firstButtonTime = 0;   // Timestamp of first detected button
+static unsigned long bothButtonsTime  = 0;   // Timestamp when both buttons are held
+static bool dualActionProcessed = false;    // Prevent multiple toggles per gesture
 
 // ─────────────────────────────────────────
 //           LORA CALLBACKS
@@ -270,34 +280,45 @@ void loop() {
 
     switch (stateManager.getState()) {
         case StateManager_remote::State::IDLE: {
-            // Check for both buttons pressed to activate delay
-            static unsigned long bothButtonsStartTime = 0;
-            static bool dualButtonProcessed = false;
-            
-            if (upButton.isPressed() && downButton.isPressed()) {
-                // Both buttons pressed
-                if (bothButtonsStartTime == 0) {
-                    bothButtonsStartTime = millis();
-                    dualButtonProcessed = false;
-                } else if (millis() - bothButtonsStartTime >= 500 && !dualButtonProcessed) {
-                    // After 100ms of both buttons being pressed, toggle delay
-                    stopDelayActive = !stopDelayActive;
-                    dualButtonProcessed = true;
-                    if (stopDelayActive) {
-                        Serial.println("[Remote] Delay activated for next ride");
-                    } else {
-                        Serial.println("[Remote] Delay deactivated");
+            /* ───────── Dual-button FSM for reliable delay toggle ───────── */
+            switch (dualState) {
+                case DualPressState::IDLE_WAIT:
+                    if (anyButtonPressed) {
+                        dualState = DualPressState::FIRST_DOWN;
+                        firstButtonTime = millis();
                     }
-                }
-            } else if (!upButton.isPressed() && !downButton.isPressed()) {
-                // No buttons pressed - reset states
-                bothButtonsStartTime = 0;
-                dualButtonProcessed = false;
-            } else if (anyButtonPressed && bothButtonsStartTime == 0) {
-                // Single button pressed (and no dual button sequence in progress)
-                stateManager.switchToArming();
-                armingStartTime = millis();
-                Serial.println("IDLE → ARMING");
+                    break;
+
+                case DualPressState::FIRST_DOWN:
+                    if (upButton.isPressed() && downButton.isPressed()) {
+                        dualState = DualPressState::BOTH_DOWN;
+                        bothButtonsTime = millis();
+                        dualActionProcessed = false;
+                    } else if (millis() - firstButtonTime > Config::DUAL_PRESS_WINDOW_MS) {
+                        // Treated as single-button press → enter ARMING
+                        dualState = DualPressState::IDLE_WAIT;
+                        stateManager.switchToArming();
+                        armingStartTime = millis();
+                        Serial.println("IDLE → ARMING (single button confirmed)");
+                    } else if (!anyButtonPressed) {
+                        // Tap & release within window – likely triple-press gesture
+                        dualState = DualPressState::IDLE_WAIT;
+                    }
+                    break;
+
+                case DualPressState::BOTH_DOWN:
+                    if (!(upButton.isPressed() && downButton.isPressed())) {
+                        // One or both buttons released → reset FSM
+                        dualState = DualPressState::IDLE_WAIT;
+                    } else {
+                        if (!dualActionProcessed && millis() - bothButtonsTime >= Config::DELAY_HOLD_MS) {
+                            stopDelayActive = !stopDelayActive;
+                            dualActionProcessed = true;
+                            if (stopDelayActive) Serial.println("[Remote] Delay activated for next ride");
+                            else Serial.println("[Remote] Delay deactivated");
+                        }
+                    }
+                    break;
             }
             break;
         }
