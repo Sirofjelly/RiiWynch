@@ -37,7 +37,7 @@ void DisplayManager::update(int percentage, float rssi, const char* mode, bool i
     u8g2.drawStr(128 - rssiWidth - 6, 13, rssiBuf);
   } else {
     // Show disconnected icon instead of RSSI when not connected
-    const char* noRemoteText = "DISCONNECTED";
+    const char* noRemoteText = "NO REMOTE";
     int16_t noRemoteWidth = u8g2.getStrWidth(noRemoteText);
     u8g2.drawStr(128 - noRemoteWidth - 6, 13, noRemoteText);
   }

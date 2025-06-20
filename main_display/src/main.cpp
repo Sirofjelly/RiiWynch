@@ -110,15 +110,38 @@ void loop() {
 
   // Cache button and remote request states for this loop iteration
   bool startRequested = isStartPressed() || loraManager.getStartMotorRequest();
-  bool stopRequested = isStopPressed() || loraManager.getStopMotorRequest();
+  bool localStopPressed = isStopPressed();
+  bool remoteStopRequested = loraManager.getStopMotorRequest();
+  
+  // Track local stop button state changes for proper stop handling
+  static bool previousLocalStopPressed = false;
+  bool localStopJustPressed = localStopPressed && !previousLocalStopPressed;
+  bool localStopJustReleased = !localStopPressed && previousLocalStopPressed;
 
-  // Read button states
+  // Handle start button
   if (startRequested) {
     state.start();
   }
-  if (stopRequested) {
+  
+  // Handle local stop button with new hold-to-stay-stopped logic
+  if (localStopJustPressed) {
+    // Local stop button was just pressed - enter stop state (no timeout)
     state.stop();
+  } else if (localStopPressed) {
+    // Local stop button is being held - maintain stop state
+    state.shouldStayStopped(true);
+  } else if (localStopJustReleased) {
+    // Local stop button was just released - exit stop state
+    state.shouldStayStopped(false);
   }
+  
+  // Handle remote stop request with timeout (old behavior)
+  if (remoteStopRequested) {
+    state.stopWithTimeout(5000); // Remote stops get 5 second timeout
+  }
+  
+  // Update previous state for next iteration
+  previousLocalStopPressed = localStopPressed;
 
   bool chokePressed = isChokePressed();
   bool brakePressed = isBrakePressed();
@@ -128,13 +151,13 @@ void loop() {
                state.getState() == StateManager::State::STOPPED);
   updateServos(chokePressed, brakePressed);
 
-  updateStartup(startRequested, stopRequested);  
+  updateStartup(startRequested, localStopPressed || remoteStopRequested);  
 
   handleWebUI();
 
   // Update managers
   profileManager.update();
-  profileManager.checkModeSwitch(stopRequested);
+  profileManager.checkModeSwitch(localStopPressed || remoteStopRequested);
 
   loraManager.update();
   heartbeatManager.update();

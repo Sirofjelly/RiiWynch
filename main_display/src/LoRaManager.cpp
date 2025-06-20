@@ -91,7 +91,7 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
 
         case RiiWynch::Protocol::MessageType::STOP_MOTOR:
             Serial.println("[LORA RX] STOP_MOTOR");
-            state.setState(StateManager::State::STOPPED);
+            _stopMotorRequest = true;
             break;
 
         case RiiWynch::Protocol::MessageType::KEEPALIVE:

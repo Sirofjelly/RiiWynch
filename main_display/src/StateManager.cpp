@@ -20,11 +20,15 @@ StateManager::State StateManager::getState() const {
 }
 
 void StateManager::update() {
-    if (currentState == State::STOPPED) {
-        if (millis() - stateEnterTime >= 5000) {
+    // Handle timeout for remote stops
+    if (currentState == State::STOPPED && hasTimeout) {
+        if (millis() - stateEnterTime >= timeoutDuration) {
             setState(State::IDLE);
+            hasTimeout = false; // Reset timeout flag
         }
-    } else if (currentState == State::RUNNING) {
+    }
+    
+    if (currentState == State::RUNNING) {
         if (millis() - lastRuntimeUpdateTime >= 1000) {
             addRuntime(1);
             lastRuntimeUpdateTime = millis();
@@ -82,7 +86,6 @@ void StateManager::updateDisplayStep() {
   lastUpdateTime = millis();
 }
 
-
 void StateManager::start() {
     if (currentState == State::IDLE) {
         setState(State::RUNNING);
@@ -94,6 +97,32 @@ void StateManager::start() {
 void StateManager::stop() {
     if (currentState == State::RUNNING) {
         setState(State::STOPPED);
+        hasTimeout = false; // Local stops don't have timeout
+    }
+}
+
+void StateManager::shouldStayStopped(bool stopButtonPressed) {
+    // This method is called when we want to maintain the STOPPED state
+    // As long as stop button is pressed, we stay in STOPPED state
+    // If not pressed and we're in STOPPED state, this indicates the button was released
+    if (currentState == State::STOPPED && !stopButtonPressed) {
+        // Stop button was released, exit stop state
+        exitStop();
+    }
+}
+
+void StateManager::exitStop() {
+    if (currentState == State::STOPPED) {
+        setState(State::IDLE);
+        hasTimeout = false; // Reset timeout flag when manually exiting
+    }
+}
+
+void StateManager::stopWithTimeout(unsigned long timeoutMs) {
+    if (currentState == State::RUNNING) {
+        setState(State::STOPPED);
+        hasTimeout = true;
+        timeoutDuration = timeoutMs;
     }
 }
 
