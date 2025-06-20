@@ -16,6 +16,11 @@ public:
     bool isManualMode() const;
     void checkModeSwitch(bool stopPressed);
     
+    // New API methods for WebUI integration
+    void setProfile(int profileIndex);  // Set specific profile directly
+    void setManualMode(bool manual);    // Toggle manual mode
+    void cycleProfile();                // Cycle to next profile (for WebUI)
+    
 private:
     // References to other managers
     StateManager& state;

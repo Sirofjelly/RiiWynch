@@ -6,6 +6,7 @@
 #include "DisplayManager.h"
 #include "StartupManager.h"
 #include "LoRaManager.h"
+#include "ProfileManager.h"
 
 const char* ssid = "RiiWynch";
 const char* password = "123456789";
@@ -25,9 +26,9 @@ extern int brakeAngle;
 extern unsigned long stopCooldownDuration;
 extern bool manualMode;
 extern StateManager state;
-extern int currentProfile; // Use the `extern` declaration from Settings.h
+
 extern DisplayManager display;
-extern const char* modeNames[4];
+
 extern unsigned long totalStarts;
 extern unsigned long totalRuntimeSeconds;
 
@@ -41,6 +42,7 @@ extern float loraBandwidth;
 // Forward declarations
 extern StateManager& getGlobalStateManager();
 extern class LoRaManager& getGlobalLoRaManager();
+extern class ProfileManager& getGlobalProfileManager();
 
 void handleLoraPage() {
   loadGlobalSettings(); // Load global LoRa settings
@@ -122,8 +124,9 @@ void handleLoraPage() {
 }
 
 void handleRoot() {
-  if (manualMode) currentProfile = 3;
-  loadSettingsForProfile(currentProfile); // Always load current profile's values
+  // Get current state from ProfileManager instead of globals
+  ProfileManager& profileMgr = getGlobalProfileManager();
+  loadSettingsForProfile(profileMgr.getCurrentProfile()); // Load current profile's values
   loadGlobalSettings(); // Load global LoRa settings
 
   String html_content = R"rawliteral(
@@ -160,7 +163,8 @@ void handleRoot() {
   <div id="statusMessage" class="status-message"></div>
   <div class="mode-row"><input type="text" id="profileInput" value=")rawliteral";
   
-  html_content += modeNames[manualMode ? 3 : currentProfile];
+  // Use ProfileManager to get current mode name
+  html_content += profileMgr.getCurrentModeName();
   
   html_content += R"rawliteral(" readonly></div>
   <div class="mode-btn-row"><button type="button" class="button" onclick="switchProfile()">Change Mode</button></div>
@@ -353,10 +357,11 @@ void handleSetDefault() {
     stopCooldownDuration = server.arg("stopCooldownDuration").toInt();
   }
   
-  // Explicitly save to the current profile
-  if (manualMode) currentProfile = 3;
-  Serial.printf("🔵 Now saving to profile %d...\n", currentProfile + 1);
-  saveSettingsForProfile(currentProfile);
+  // Explicitly save to the current profile using ProfileManager
+  ProfileManager& profileMgr = getGlobalProfileManager();
+  int currentProfileIndex = profileMgr.getCurrentProfile();
+  Serial.printf("🔵 Now saving to profile %d...\n", currentProfileIndex + 1);
+  saveSettingsForProfile(currentProfileIndex);
   
   // Force a hard delay to ensure EEPROM write completes
   delay(100);
@@ -366,7 +371,7 @@ void handleSetDefault() {
   int tempGasIdle = gasIdleAngle;
   
   // Re-load from EEPROM to verify
-  loadSettingsForProfile(currentProfile);
+  loadSettingsForProfile(currentProfileIndex);
   
   Serial.printf("✅ Verification - Starter: %lu (expected %lu), Gas Idle: %d (expected %d)\n", 
                 starterRelayTime, tempStarterTime, gasIdleAngle, tempGasIdle);
@@ -377,35 +382,24 @@ void handleSetDefault() {
 
 void handleToggleManual() {
   if (server.hasArg("state")) {
-    manualMode = server.arg("state") == "1";
-    if (manualMode) {
-      state.setTargetPercentage(5);
-      currentState = IDLE; // Reset state machine to prevent ramping
-      display.startModeDisplay(modeNames[3], 1500);
-    } else {
-      currentState = IDLE;
-      display.startModeDisplay(modeNames[currentProfile], 1500);
-    }
+    bool newManualMode = server.arg("state") == "1";
+    ProfileManager& profileMgr = getGlobalProfileManager();
+    profileMgr.setManualMode(newManualMode);
+    
+    // Reset state machine to prevent ramping
+    getGlobalStateManager().setTargetPercentage(newManualMode ? 5 : 0);
   }
   server.send(200, "text/plain", "OK");
 }
 
 // Ensure the Web UI correctly reflects the current profile
 void handleSwitchProfile() {
-    saveSettingsForProfile(currentProfile);
-    Serial.printf("💾 Saved settings to profile %d before switching\n", currentProfile + 1);
-
-    // Cycle to the next profile (0-3)
-    currentProfile = (currentProfile + 1) % 4;
-    manualMode = (currentProfile == 3);
-    loadSettingsForProfile(currentProfile);
-
-    Serial.printf("🔄 Switching to profile %d\n", currentProfile + 1);
-    display.startModeDisplay(modeNames[currentProfile], 1500);
+    ProfileManager& profileMgr = getGlobalProfileManager();
+    profileMgr.cycleProfile(); // Use ProfileManager to cycle profiles
 
     // Prepare JSON response with all loaded settings
     String jsonResponse = "{";
-    jsonResponse += "\"profile\":" + String(currentProfile) + ","; // Correctly reflect the current profile
+    jsonResponse += "\"profile\":" + String(profileMgr.getCurrentProfile()) + ",";
     jsonResponse += "\"starterTime\":" + String(starterRelayTime) + ",";
     jsonResponse += "\"stage1Duration\":" + String(stage1Duration) + ",";
     jsonResponse += "\"stage1Speed\":" + String(stage1SpeedPercentage) + ",";
@@ -416,16 +410,17 @@ void handleSwitchProfile() {
     jsonResponse += "\"chokeAngle\":" + String(chokeAngle) + ",";
     jsonResponse += "\"brakeAngle\":" + String(brakeAngle) + ",";
     jsonResponse += "\"stopCooldownDuration\":" + String(stopCooldownDuration) + ",";
-    jsonResponse += "\"manualMode\":" + String(manualMode ? "true" : "false");
+    jsonResponse += "\"manualMode\":" + String(profileMgr.isManualMode() ? "true" : "false");
     jsonResponse += "}";
 
     server.send(200, "application/json", jsonResponse);
 }
 
 void handleGetMode() {
+  ProfileManager& profileMgr = getGlobalProfileManager();
   String jsonResponse = "{";
-  jsonResponse += "\"profile\":" + String(currentProfile) + ",";
-  jsonResponse += "\"manualMode\":" + String(manualMode ? "true" : "false");
+  jsonResponse += "\"profile\":" + String(profileMgr.getCurrentProfile()) + ",";
+  jsonResponse += "\"manualMode\":" + String(profileMgr.isManualMode() ? "true" : "false");
   jsonResponse += "}";
   server.send(200, "application/json", jsonResponse);
 }

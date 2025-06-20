@@ -4,12 +4,16 @@
 #include "Relays.h"
 #include "StateManager.h"
 #include "Settings.h"
+#include "ProfileManager.h"
 
 // Forward declarations of functions
 void loadSettings();
 void saveSettings();
 void loadSettingsForProfile(int profileIndex);
 void saveSettingsForProfile(int profileIndex);
+
+// Forward declaration for global ProfileManager accessor
+extern ProfileManager& getGlobalProfileManager();
 
 // Create a preferences instance
 Preferences preferences;
@@ -280,4 +284,13 @@ void resetStats() {
     totalRuntimeSeconds = 0;
     saveStats();
     Serial.println("📊 Stats have been reset.");
+}
+
+// Wrapper functions to interface with ProfileManager
+int getCurrentProfile() {
+    return getGlobalProfileManager().getCurrentProfile();
+}
+
+bool isManualMode() {
+    return getGlobalProfileManager().isManualMode();
 }

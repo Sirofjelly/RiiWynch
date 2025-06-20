@@ -11,9 +11,14 @@ ProfileManager::ProfileManager(StateManager& stateMgr, DisplayManager& displayMg
 
 void ProfileManager::begin() {
     // Initialize with Auto 1 profile
+    modeState = 0;
     currentProfile = 0; // Always start in Auto 1
     manualMode = false;
-    modeState = 0;
+    
+    // Sync global variables to match ProfileManager state
+    ::currentProfile = this->currentProfile;
+    ::manualMode = this->manualMode;
+    
     loadSettingsForProfile(currentProfile); // Load profile 1 settings
 }
 
@@ -49,9 +54,14 @@ void ProfileManager::checkModeSwitch(bool stopPressed) {
 }
 
 void ProfileManager::switchToNextMode() {
-    modeState = (currentProfile + 1) % 4; // Synchronize modeState with currentProfile
+    modeState = (modeState + 1) % 4;
     manualMode = (modeState == 3);
     currentProfile = modeState;
+    
+    // Sync global variables
+    ::currentProfile = this->currentProfile;
+    ::manualMode = this->manualMode;
+    
     loadSettingsForProfile(currentProfile);
 
     // Display mode change confirmation using new protected display method
@@ -62,6 +72,66 @@ void ProfileManager::switchToNextMode() {
     }
     
     Serial.printf("Mode switched to: %s (Profile %d)\n", modeNames[modeState], currentProfile + 1);
+}
+
+// New API methods for WebUI integration
+void ProfileManager::setProfile(int profileIndex) {
+    if (profileIndex < 0 || profileIndex > 3) {
+        Serial.printf("Invalid profile index: %d\n", profileIndex);
+        return;
+    }
+    
+    modeState = profileIndex;
+    currentProfile = profileIndex;
+    manualMode = (profileIndex == 3);
+    
+    // Sync global variables
+    ::currentProfile = this->currentProfile;
+    ::manualMode = this->manualMode;
+    
+    loadSettingsForProfile(currentProfile);
+    display.startModeDisplay(modeNames[modeState], 1500);
+    
+    if (manualMode) {
+        state.setTargetPercentage(5);
+    }
+    
+    Serial.printf("Profile set to: %s (Profile %d)\n", modeNames[modeState], currentProfile + 1);
+}
+
+void ProfileManager::setManualMode(bool manual) {
+    manualMode = manual;
+    modeState = manual ? 3 : currentProfile;
+    
+    // Sync global variables
+    ::manualMode = this->manualMode;
+    
+    if (manual) {
+        currentProfile = 3;
+        ::currentProfile = 3;
+        state.setTargetPercentage(5);
+        display.startModeDisplay(modeNames[3], 1500);
+    } else {
+        // When exiting manual mode, go back to the last auto profile
+        if (currentProfile == 3) {
+            currentProfile = 0; // Default to SURF if we were in manual
+        }
+        modeState = currentProfile;
+        ::currentProfile = this->currentProfile;
+        display.startModeDisplay(modeNames[currentProfile], 1500);
+    }
+    
+    loadSettingsForProfile(currentProfile);
+    Serial.printf("Manual mode %s, Profile: %s\n", manual ? "enabled" : "disabled", modeNames[modeState]);
+}
+
+void ProfileManager::cycleProfile() {
+    // Save current profile settings before switching
+    saveSettingsForProfile(currentProfile);
+    Serial.printf("💾 Saved settings to profile %d before switching\n", currentProfile + 1);
+    
+    // Cycle to next profile
+    switchToNextMode();
 }
 
 int ProfileManager::getCurrentProfile() const {

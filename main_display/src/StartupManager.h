@@ -8,7 +8,7 @@ extern int stage1SpeedPercentage;
 extern unsigned long stage1Duration;
 extern unsigned long stage2Duration;
 extern unsigned long stage3Duration;
-extern bool manualMode;
+
 extern bool startupInProgress;
 
 enum StartupState {

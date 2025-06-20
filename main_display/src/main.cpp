@@ -29,9 +29,7 @@ HeartbeatManager heartbeatManager(state, display);
 ProfileManager profileManager(state, display, upButton, downButton);
 TaskManager taskManager;
 
-// Global mode state for cycling
-static int modeState = 0; // 0: Auto 1, 1: Auto 2, 2: Auto 3, 3: Manual
-const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
+// Note: Mode state is now managed by ProfileManager
 
 StateManager& getGlobalStateManager() {
   return state;

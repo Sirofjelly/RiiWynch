@@ -5,13 +5,14 @@
 #include "StateManager.h"
 #include "Settings.h"
 #include "StartupManager.h"
+#include "ProfileManager.h"
 
 const int START_RELAY_PIN = 41;
 
 bool startupInProgress = false;
 
-extern bool manualMode;
 extern StateManager& getGlobalStateManager();
+extern ProfileManager& getGlobalProfileManager();
 
 // Enumeration now defined in StartupManager.h
 
@@ -45,6 +46,9 @@ void updateStartup(bool startPressed, bool stopPressed) {
     gasServo.write(0);
     return;
   }
+
+  ProfileManager& profileMgr = getGlobalProfileManager();
+  bool manualMode = profileMgr.isManualMode();
 
   switch (currentState) {
     case IDLE:
