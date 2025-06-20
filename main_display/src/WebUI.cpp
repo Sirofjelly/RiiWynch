@@ -191,7 +191,7 @@ void handleRoot() {
     <button type="button" class="button" onclick="saveSettings()">Save</button>
   </form>
 
-  <div class="footer">Gmacht mit &lt;3 vom Silvan</div>
+  <div class="footer">Gmacht mit ❤ vom Silvan</div>
 
   <script>
     const modeNames = ["SURF", "SKIM", "SMOOTH", "MANUAL"];
@@ -575,6 +575,7 @@ void handleStats() {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>RiiWynch Statistics</title>
   <style>
     body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; margin-top: 100px; }
@@ -585,7 +586,7 @@ void handleStats() {
     h2 { font-size: 3.3em; margin-bottom: 35px; }
     .stat-item { font-size: 2em; margin: 20px; }
     .button { font-size: 2em; width: 260px; padding: 11px; border: 2.75px solid #ff00ff; color: #00ffff; background: transparent; font-family: sans-serif; border-radius: 13px; margin-top: 40px; cursor: pointer; text-decoration: none; display: inline-block; }
-    .footer { font-size: 1.2em; color: #888; text-align: center; margin-top: 50px; }
+    .footer { font-size: 1.5em; color: #888; text-align: center; margin-top: 50px; }
   </style>
 </head>
 <body>
@@ -602,7 +603,7 @@ void handleStats() {
   html_content += String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s";
   html_content += R"rawliteral(</span></div>
   <button type="button" class="button" onclick="resetStats()">Reset Stats</button>
-  <div class="footer">Gmacht mit &lt;3 vom Silvan</div>
+  <div class="footer">Gmacht mit ❤ vom Silvan</div>
   <script>
     function resetStats() {
       if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
