@@ -47,6 +47,9 @@ extern int loraSpreadingFactor;  // 7-12
 extern int loraCodingRate;       // 5-8 
 extern float loraBandwidth;      // kHz (7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500)
 
+// Remote-specific settings
+extern unsigned long remoteStopDelayMs; // Configurable delay before stopping motor (ms)
+
 // Persistent statistics
 extern unsigned long totalStarts;
 extern unsigned long totalRuntimeSeconds;

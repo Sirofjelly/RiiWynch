@@ -31,6 +31,10 @@ void LoRaManager_remote::onLoRaSettingsReceived(void (*callback)()) {
     _loraSettingsReceivedCallback = callback;
 }
 
+void LoRaManager_remote::onRemoteSettingsReceived(void (*callback)()) {
+    _remoteSettingsReceivedCallback = callback;
+}
+
 void LoRaManager_remote::onStopMotor(void (*callback)()) {
     _stopMotorCallback = callback;
 }
@@ -85,6 +89,16 @@ void LoRaManager_remote::handleMessage(const RiiWynch::Protocol::Message& msg) {
             // Notify callback that settings were received and applied
             if (_loraSettingsReceivedCallback) {
                 _loraSettingsReceivedCallback();
+            }
+            break;
+
+        case RiiWynch::Protocol::MessageType::REMOTE_SETTINGS:
+            Serial.println("[LORA RX] Remote settings received from main");
+            // Apply the received remote settings
+            applyReceivedRemoteSettings(msg.payload.remoteSettings.stopDelayMs);
+            // Notify callback that settings were received and applied
+            if (_remoteSettingsReceivedCallback) {
+                _remoteSettingsReceivedCallback();
             }
             break;
 

@@ -8,7 +8,7 @@ public:
     
     void begin();
     
-    void drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState, bool showDelay = false);
+    void drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState, bool showDelay = false, unsigned long delayMs = 1000);
     void drawMenuScreen(int percentage);
     
 private:

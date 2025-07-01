@@ -15,7 +15,8 @@ enum class MessageType : uint8_t {
     START_MOTOR,
     STOP_MOTOR,
     KEEPALIVE,
-    LORA_SETTINGS
+    LORA_SETTINGS,
+    REMOTE_SETTINGS
 };
 
 enum class DeviceID : uint8_t {
@@ -32,6 +33,10 @@ struct LoRaSettings {
     float bandwidth;      // kHz
 };
 
+struct RemoteSettings {
+    uint32_t stopDelayMs; // Configurable delay before stopping motor (ms)
+};
+
 struct Message {
     MessageType type;
     DeviceID source;
@@ -41,6 +46,7 @@ struct Message {
         uint8_t percentage;
         bool isPressed;
         LoRaSettings loraSettings;
+        RemoteSettings remoteSettings;
     } payload;
 };
 #pragma pack(pop)

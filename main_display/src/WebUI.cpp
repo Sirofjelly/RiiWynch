@@ -91,7 +91,7 @@ void handleLoraPage() {
     <button type="button" class="button" onclick="saveLoRaSettings()">Save LoRa</button>
   </form>
 
-  <div class="footer">Gmacht mit &lt;3 vom Silvan</div>
+  <div class="footer">Gmacht mit ❤ vom Silvan</div>
 
   <script>
     function showStatusMessage(message, isSuccess = true) {
@@ -185,6 +185,7 @@ void handleRoot() {
   html_content += "<div class=\"form-row\"><label>Choke Angle (°):</label><input name=\"chokeAngle\" type=\"text\" value=\"" + String(chokeAngle) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Brake Angle (°):</label><input name=\"brakeAngle\" type=\"text\" value=\"" + String(brakeAngle) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Stop Cooldown (ms):</label><input name=\"stopCooldownDuration\" type=\"text\" value=\"" + String(stopCooldownDuration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Remote Stop Delay (ms):</label><input name=\"remoteStopDelayMs\" type=\"text\" value=\"" + String(remoteStopDelayMs) + "\"></div>";
   
   html_content += R"rawliteral(
     <button type="button" class="button" onclick="applySettings()">Apply</button>
@@ -244,6 +245,7 @@ void handleRoot() {
           document.querySelector('input[name="chokeAngle"]').value = data.chokeAngle;
           document.querySelector('input[name="brakeAngle"]').value = data.brakeAngle;
           document.querySelector('input[name="stopCooldownDuration"]').value = data.stopCooldownDuration;
+          document.querySelector('input[name="remoteStopDelayMs"]').value = data.remoteStopDelayMs;
           showStatusMessage('Switched to Mode ' + modeNames[data.manualMode ? 3 : data.profile]);
         })
         .catch(error => { showStatusMessage('Error switching mode: ' + error, false); });
@@ -307,6 +309,14 @@ void handleSet() {
   if (server.hasArg("stopCooldownDuration")) {
     stopCooldownDuration = server.arg("stopCooldownDuration").toInt();
   }
+  
+  if (server.hasArg("remoteStopDelayMs")) {
+    remoteStopDelayMs = server.arg("remoteStopDelayMs").toInt();
+    Serial.printf("  Remote Stop Delay: %lu ms\n", remoteStopDelayMs);
+    
+    // Send the new setting to the remote
+    getGlobalLoRaManager().sendRemoteSettings();
+  }
 
   // Send a simple success response for AJAX request
   server.send(200, "text/plain", "OK");
@@ -363,11 +373,19 @@ void handleSetDefault() {
     stopCooldownDuration = server.arg("stopCooldownDuration").toInt();
   }
   
+  if (server.hasArg("remoteStopDelayMs")) {
+    remoteStopDelayMs = server.arg("remoteStopDelayMs").toInt();
+    Serial.printf("  Remote Stop Delay: %lu ms\n", remoteStopDelayMs);
+  }
+  
   // Explicitly save to the current profile using ProfileManager
   ProfileManager& profileMgr = getGlobalProfileManager();
   int currentProfileIndex = profileMgr.getCurrentProfile();
   Serial.printf("🔵 Now saving to profile %d...\n", currentProfileIndex + 1);
   saveSettingsForProfile(currentProfileIndex);
+  
+  // Also save global settings (like remoteStopDelayMs)
+  saveGlobalSettings();
   
   // Force a hard delay to ensure EEPROM write completes
   delay(100);
@@ -416,6 +434,7 @@ void handleSwitchProfile() {
     jsonResponse += "\"chokeAngle\":" + String(chokeAngle) + ",";
     jsonResponse += "\"brakeAngle\":" + String(brakeAngle) + ",";
     jsonResponse += "\"stopCooldownDuration\":" + String(stopCooldownDuration) + ",";
+    jsonResponse += "\"remoteStopDelayMs\":" + String(remoteStopDelayMs) + ",";
     jsonResponse += "\"manualMode\":" + String(profileMgr.isManualMode() ? "true" : "false");
     jsonResponse += "}";
 

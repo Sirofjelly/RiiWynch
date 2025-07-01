@@ -81,6 +81,10 @@ void setup() {
     Serial.println("Failed to initialize LoRa Manager!");
   }
   
+  // Send initial remote settings to ensure remote has valid configuration
+  delay(1000); // Give remote time to initialize
+  loraManager.sendRemoteSettings();
+  
   // Initialize HeartbeatManager
   if (!heartbeatManager.begin()) {
     Serial.println("Failed to initialize Heartbeat Manager!");

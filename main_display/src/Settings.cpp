@@ -43,6 +43,9 @@ int loraSpreadingFactor = 8;      // good range/speed balance
 int loraCodingRate = 5;           // error correction
 float loraBandwidth = 125.0;      // kHz (standard)
 
+// Remote-specific settings - default values
+unsigned long remoteStopDelayMs = 1000; // 1 second default delay
+
 // Define persistent statistics
 unsigned long totalStarts = 0;
 unsigned long totalRuntimeSeconds = 0;
@@ -207,10 +210,14 @@ void loadGlobalSettings() {
     loraCodingRate = preferences.getInt("global_cr", 5);
     loraBandwidth = preferences.getFloat("global_bw", 125.0);
     
+    // Load remote-specific settings
+    remoteStopDelayMs = preferences.getULong("stop_delay_ms", 1000);
+    
     Serial.printf("✅ Loaded global LoRa settings from preferences\n");
     Serial.printf("  Frequency: %.1f MHz (was %.1f)\n", loraFrequency, oldFreq);
     Serial.printf("  Power: %d dBm (was %d)\n", loraPower, oldPower);
     Serial.printf("  SF: %d, CR: %d, BW: %.1f kHz\n", loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    Serial.printf("  Remote Stop Delay: %lu ms\n", remoteStopDelayMs);
     
     // Close preferences
     preferences.end();
@@ -237,6 +244,9 @@ void saveGlobalSettings() {
     ok &= preferences.putInt("global_sf", loraSpreadingFactor);
     ok &= preferences.putInt("global_cr", loraCodingRate);
     ok &= preferences.putFloat("global_bw", loraBandwidth);
+    
+    // Save remote-specific settings
+    ok &= preferences.putULong("stop_delay_ms", remoteStopDelayMs);
 
     preferences.end();
 

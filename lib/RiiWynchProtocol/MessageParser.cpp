@@ -18,7 +18,7 @@ bool MessageParser::deserialize(const uint8_t* buffer, size_t bufferSize, Messag
     }
     memcpy(&msg, buffer, sizeof(Message));
     // A simple validation to check if the message type is within the defined enum range
-    if (msg.type > MessageType::LORA_SETTINGS) {
+    if (msg.type > MessageType::REMOTE_SETTINGS) {
         return false;
     }
     return true;

@@ -142,6 +142,22 @@ void LoRaManager::sendLoRaSettings() {
     }
 }
 
+void LoRaManager::sendRemoteSettings() {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::REMOTE_SETTINGS;
+    msg.source = RiiWynch::Protocol::DeviceID::MAIN_DISPLAY;
+    msg.packetCounter = packetCounter++;
+    
+    // Pack current remote settings into the message
+    msg.payload.remoteSettings.stopDelayMs = remoteStopDelayMs;
+
+    if (transceiver.transmit(msg)) {
+        Serial.printf("[LORA TX] Remote settings sent: stopDelayMs=%lu ms\n", remoteStopDelayMs);
+    } else {
+        Serial.println("[LORA TX] Failed to send remote settings");
+    }
+}
+
 void LoRaManager::sendAck(RiiWynch::Protocol::MessageType type, uint8_t percentage) {
     RiiWynch::Protocol::Message msg;
     msg.type = type;

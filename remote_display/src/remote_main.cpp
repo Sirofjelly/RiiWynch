@@ -21,6 +21,7 @@ void decPctSingle();
 
 // LoRa callbacks
 void onLoraSettingsReceived();
+void onLoraRemoteSettingsReceived();
 void onLoraStopMotor();
 
 // ─────────────────────────────────────────
@@ -39,7 +40,7 @@ namespace Config {
     // New constants for dead man's switch logic
     static const unsigned long ARMING_DURATION_MS = 1000;
     static const unsigned long KEEPALIVE_INTERVAL_MS = 500;
-    static const unsigned long NO_BUTTON_TIMEOUT_MS = 1000;
+    // NO_BUTTON_TIMEOUT_MS moved to global variable remoteStopDelayMs
     static const unsigned long HEARTBEAT_INTERVAL_MS = 500;
     // Dual-button gesture timings
     static const unsigned long DUAL_PRESS_WINDOW_MS = 150;    // Time to wait for 2nd button
@@ -67,6 +68,9 @@ unsigned long armingStartTime = 0;
 unsigned long noButtonPressStartTime = 0;
 unsigned long lastKeepaliveTime = 0;
 bool stopDelayActive = false; // Flag for delayed stop functionality
+
+// ─── Remote Settings ───
+extern unsigned long remoteStopDelayMs; // Configurable stop delay from Settings_remote
 
 // ─── Dual-button gesture FSM ───
 enum class DualPressState { IDLE_WAIT, FIRST_DOWN, BOTH_DOWN };
@@ -103,6 +107,10 @@ void onLoraSettingsReceived() {
     } else {
         Serial.println("[Remote] Failed to restart LoRa module with new settings");
     }
+}
+
+void onLoraRemoteSettingsReceived() {
+    Serial.println("[Remote] Remote settings received and applied from main");
 }
 
 void onLoraStopMotor() {
@@ -201,7 +209,7 @@ void drawForState() {
         case StateManager_remote::State::IDLE:
         case StateManager_remote::State::ARMING:
         case StateManager_remote::State::CRUISING:
-             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState(), stopDelayActive);
+             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState(), stopDelayActive, remoteStopDelayMs);
             break;
         case StateManager_remote::State::MENU:
             displayManager.drawMenuScreen(stateManager.getShownPercentage());
@@ -253,6 +261,7 @@ void setup() {
     loraManager.onDisplayUpdate(onLoraDisplayUpdate);
     loraManager.onAckForValue(onLoraAckForValue);
     loraManager.onLoRaSettingsReceived(onLoraSettingsReceived);
+    loraManager.onRemoteSettingsReceived(onLoraRemoteSettingsReceived);
     loraManager.onStopMotor(onLoraStopMotor);
 
     // --- Button Callbacks ---
@@ -356,7 +365,7 @@ void loop() {
                         // Start the timer
                         noButtonPressStartTime = millis();
                         Serial.println("No button press timer started (with delay)...");
-                    } else if (millis() - noButtonPressStartTime >= Config::NO_BUTTON_TIMEOUT_MS) {
+                    } else if (millis() - noButtonPressStartTime >= remoteStopDelayMs) {
                         Serial.println("CRUISING → IDLE (STOP_MOTOR sent after delay)");
                         loraManager.sendStopMotor();
                         stateManager.switchToIdle();
