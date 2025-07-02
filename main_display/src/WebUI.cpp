@@ -52,6 +52,7 @@ void handleLoraPage() {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>RiiWynch LoRa Settings</title>
   <style>
     body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; margin-top: 100px; }
@@ -137,6 +138,7 @@ void handleRoot() {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>RiiWynch Settings</title>
   <style>
     body { background-color: #111; color: #00ffff; font-family: sans-serif; text-align: center; padding: 36px; margin-top: 100px; }
