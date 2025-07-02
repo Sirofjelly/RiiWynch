@@ -6,6 +6,7 @@ void updateStartup(bool startPressed, bool stopPressed);
 extern unsigned long starterRelayTime;
 extern int stage1SpeedPercentage;
 extern unsigned long stage1Duration;
+extern int stage2SpeedPercentage;
 extern unsigned long stage2Duration;
 extern unsigned long stage3Duration;
 

@@ -21,6 +21,7 @@ Preferences preferences;
 unsigned long starterRelayTime = 1500;
 int stage1SpeedPercentage = 30;           // % of max speed (5-100)
 unsigned long stage1Duration = 1000;      // ms
+int stage2SpeedPercentage = 100;           // % of max speed (5-100) - stage 2 target speed
 unsigned long stage2Duration = 2000;      // ms
 unsigned long stage3Duration = 1500;      // ms
 int gasIdleAngle = 15;
@@ -93,6 +94,7 @@ void loadSettingsForProfile(int profileIndex) {
         starterRelayTime     = 1500;
         stage1SpeedPercentage = 30;
         stage1Duration        = 1000;
+        stage2SpeedPercentage = 60;
         stage2Duration        = 2000;
         stage3Duration        = 1500;
         gasIdleAngle         = 15;
@@ -119,6 +121,7 @@ void loadSettingsForProfile(int profileIndex) {
     starterRelayTime     = preferences.getULong(String(baseKey + "starter").c_str(), 1500);
     stage1SpeedPercentage = preferences.getInt(String(baseKey + "s1spd").c_str(), 30);
     stage1Duration        = preferences.getULong(String(baseKey + "s1dur").c_str(), 1000);
+    stage2SpeedPercentage = preferences.getInt(String(baseKey + "s2spd").c_str(), 100);
     stage2Duration        = preferences.getULong(String(baseKey + "s2dur").c_str(), 2000);
     stage3Duration        = preferences.getULong(String(baseKey + "s3dur").c_str(), 1500);
     gasIdleAngle         = preferences.getInt(String(baseKey + "gasidle").c_str(), 15);
@@ -158,6 +161,7 @@ void saveSettingsForProfile(int profileIndex) {
     ok &= preferences.putULong(String(baseKey + "starter").c_str(), starterRelayTime);
     ok &= preferences.putInt(String(baseKey + "s1spd").c_str(), stage1SpeedPercentage);
     ok &= preferences.putULong(String(baseKey + "s1dur").c_str(), stage1Duration);
+    ok &= preferences.putInt(String(baseKey + "s2spd").c_str(), stage2SpeedPercentage);
     ok &= preferences.putULong(String(baseKey + "s2dur").c_str(), stage2Duration);
     ok &= preferences.putULong(String(baseKey + "s3dur").c_str(), stage3Duration);
     ok &= preferences.putInt(String(baseKey + "gasidle").c_str(), gasIdleAngle);

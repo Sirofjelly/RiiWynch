@@ -30,8 +30,9 @@ void resetStats();
 extern unsigned long starterRelayTime;
 extern int stage1SpeedPercentage;  // Target speed for stage 1 (5-100)
 extern unsigned long stage1Duration; // ms – ramp to stage1SpeedPercentage
-extern unsigned long stage2Duration; // ms – ramp from stage1SpeedPercentage to 100%
-extern unsigned long stage3Duration; // ms – ramp from 100% down to target percentage
+extern int stage2SpeedPercentage;  // Target speed for stage 2 (5-100)
+extern unsigned long stage2Duration; // ms – ramp from stage1SpeedPercentage to stage2SpeedPercentage
+extern unsigned long stage3Duration; // ms – ramp from stage2SpeedPercentage down to target percentage
 extern int gasIdleAngle;
 extern int gasMaxAngle;
 extern int chokeAngle;

@@ -17,6 +17,7 @@ WebServer server(80);
 extern unsigned long starterRelayTime;
 extern int stage1SpeedPercentage;
 extern unsigned long stage1Duration;
+extern int stage2SpeedPercentage;
 extern unsigned long stage2Duration;
 extern unsigned long stage3Duration;
 extern int gasIdleAngle;
@@ -178,6 +179,7 @@ void handleRoot() {
   html_content += "<div class=\"form-row\"><label>Starter Relay Time (ms):</label><input name=\"starterRelayTime\" type=\"text\" value=\"" + String(starterRelayTime) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Stage 1 Speed (%) :</label><input name=\"stage1Speed\" type=\"text\" value=\"" + String(stage1SpeedPercentage) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Stage 1 Time (ms):</label><input name=\"stage1Duration\" type=\"text\" value=\"" + String(stage1Duration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Stage 2 Speed (%) :</label><input name=\"stage2Speed\" type=\"text\" value=\"" + String(stage2SpeedPercentage) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Stage 2 Time (ms):</label><input name=\"stage2Duration\" type=\"text\" value=\"" + String(stage2Duration) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Stage 3 Time (ms):</label><input name=\"stage3Duration\" type=\"text\" value=\"" + String(stage3Duration) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Gas Idle Angle (°):</label><input name=\"gasIdleAngle\" type=\"text\" value=\"" + String(gasIdleAngle) + "\"></div>";
@@ -239,6 +241,7 @@ void handleRoot() {
           document.querySelector('input[name="stage1Duration"]').value = data.stage1Duration;
           document.querySelector('input[name="stage1Speed"]').value = data.stage1Speed;
           document.querySelector('input[name="stage2Duration"]').value = data.stage2Duration;
+          document.querySelector('input[name="stage2Speed"]').value = data.stage2Speed;
           document.querySelector('input[name="stage3Duration"]').value = data.stage3Duration;
           document.querySelector('input[name="gasIdleAngle"]').value = data.gasIdleAngle;
           document.querySelector('input[name="gasMaxAngle"]').value = data.gasMaxAngle;
@@ -279,6 +282,10 @@ void handleSet() {
   if (server.hasArg("stage1Speed")) {
     // Convert to float with bounds checking
     stage1SpeedPercentage = server.arg("stage1Speed").toInt();
+  }
+  
+  if (server.hasArg("stage2Speed")) {
+    stage2SpeedPercentage = server.arg("stage2Speed").toInt();
   }
   
   if (server.hasArg("stage2Duration")) {
@@ -342,6 +349,10 @@ void handleSetDefault() {
   if (server.hasArg("stage1Speed")) {
     // Convert to float with bounds checking
     stage1SpeedPercentage = server.arg("stage1Speed").toInt();
+  }
+  
+  if (server.hasArg("stage2Speed")) {
+    stage2SpeedPercentage = server.arg("stage2Speed").toInt();
   }
   
   if (server.hasArg("stage2Duration")) {
@@ -428,6 +439,7 @@ void handleSwitchProfile() {
     jsonResponse += "\"stage1Duration\":" + String(stage1Duration) + ",";
     jsonResponse += "\"stage1Speed\":" + String(stage1SpeedPercentage) + ",";
     jsonResponse += "\"stage2Duration\":" + String(stage2Duration) + ",";
+    jsonResponse += "\"stage2Speed\":" + String(stage2SpeedPercentage) + ",";
     jsonResponse += "\"stage3Duration\":" + String(stage3Duration) + ",";
     jsonResponse += "\"gasIdleAngle\":" + String(gasIdleAngle) + ",";
     jsonResponse += "\"gasMaxAngle\":" + String(gasMaxAngle) + ",";
