@@ -16,7 +16,8 @@ enum class MessageType : uint8_t {
     STOP_MOTOR,
     KEEPALIVE,
     LORA_SETTINGS,
-    REMOTE_SETTINGS
+    REMOTE_SETTINGS,
+    MODE_UPDATE
 };
 
 enum class DeviceID : uint8_t {
@@ -47,6 +48,7 @@ struct Message {
         bool isPressed;
         LoRaSettings loraSettings;
         RemoteSettings remoteSettings;
+        uint8_t modeIndex;
     } payload;
 };
 #pragma pack(pop)

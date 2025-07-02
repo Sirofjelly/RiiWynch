@@ -39,6 +39,10 @@ void LoRaManager_remote::onStopMotor(void (*callback)()) {
     _stopMotorCallback = callback;
 }
 
+void LoRaManager_remote::onModeUpdate(void (*callback)(uint8_t modeIdx)) {
+    _modeUpdateCallback = callback;
+}
+
 void LoRaManager_remote::update() {
     RiiWynch::Protocol::Message msg;
     if (transceiver.receive(msg)) {
@@ -99,6 +103,16 @@ void LoRaManager_remote::handleMessage(const RiiWynch::Protocol::Message& msg) {
             // Notify callback that settings were received and applied
             if (_remoteSettingsReceivedCallback) {
                 _remoteSettingsReceivedCallback();
+            }
+            break;
+
+        case RiiWynch::Protocol::MessageType::MODE_UPDATE:
+            Serial.printf("[LORA RX] MODE_UPDATE received: %d\n", msg.payload.modeIndex);
+            if (_modeUpdateCallback) {
+                Serial.println("[LORA RX] Calling mode update callback");
+                _modeUpdateCallback(msg.payload.modeIndex);
+            } else {
+                Serial.println("[LORA RX] No mode update callback registered!");
             }
             break;
 

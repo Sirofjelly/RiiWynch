@@ -85,6 +85,9 @@ void setup() {
   delay(1000); // Give remote time to initialize
   loraManager.sendRemoteSettings();
   
+  // 🔄 Send initial mode information to remote
+  loraManager.sendModeUpdate(profileManager.getCurrentProfile());
+  
   // Initialize HeartbeatManager
   if (!heartbeatManager.begin()) {
     Serial.println("Failed to initialize Heartbeat Manager!");

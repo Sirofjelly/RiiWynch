@@ -1,5 +1,7 @@
 #include "ProfileManager.h"
 #include "Settings.h"  // For loadSettingsForProfile() and global variables
+#include "LoRaManager.h" // 🔄 For sending mode updates to remote
+extern LoRaManager& getGlobalLoRaManager(); // 🔄 Forward declaration
 #include <Arduino.h>
 
 // Static member definitions
@@ -72,6 +74,9 @@ void ProfileManager::switchToNextMode() {
     }
     
     Serial.printf("Mode switched to: %s (Profile %d)\n", modeNames[modeState], currentProfile + 1);
+
+    // 🔄 Notify remote about mode change
+    getGlobalLoRaManager().sendModeUpdate(static_cast<uint8_t>(modeState));
 }
 
 // New API methods for WebUI integration
@@ -97,6 +102,9 @@ void ProfileManager::setProfile(int profileIndex) {
     }
     
     Serial.printf("Profile set to: %s (Profile %d)\n", modeNames[modeState], currentProfile + 1);
+
+    // 🔄 Notify remote about mode change
+    getGlobalLoRaManager().sendModeUpdate(static_cast<uint8_t>(modeState));
 }
 
 void ProfileManager::setManualMode(bool manual) {
@@ -123,6 +131,9 @@ void ProfileManager::setManualMode(bool manual) {
     
     loadSettingsForProfile(currentProfile);
     Serial.printf("Manual mode %s, Profile: %s\n", manual ? "enabled" : "disabled", modeNames[modeState]);
+
+    // 🔄 Notify remote about mode change
+    getGlobalLoRaManager().sendModeUpdate(static_cast<uint8_t>(modeState));
 }
 
 void ProfileManager::cycleProfile() {

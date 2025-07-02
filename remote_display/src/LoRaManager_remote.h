@@ -24,6 +24,7 @@ public:
     void onLoRaSettingsReceived(void (*callback)()); // Callback when LoRa settings are received and applied
     void onRemoteSettingsReceived(void (*callback)()); // Callback when remote settings are received and applied
     void onStopMotor(void (*callback)());
+    void onModeUpdate(void (*callback)(uint8_t modeIdx)); // 🔄 New: mode update callback
 
 private:
     void handleMessage(const RiiWynch::Protocol::Message& msg);
@@ -38,6 +39,7 @@ private:
     void (*_loraSettingsReceivedCallback)() = nullptr;
     void (*_remoteSettingsReceivedCallback)() = nullptr;
     void (*_stopMotorCallback)() = nullptr;
+    void (*_modeUpdateCallback)(uint8_t) = nullptr; // 🔄
     
     // State for resending VAL messages
     bool waitingForValAck = false;

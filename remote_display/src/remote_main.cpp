@@ -23,6 +23,7 @@ void decPctSingle();
 void onLoraSettingsReceived();
 void onLoraRemoteSettingsReceived();
 void onLoraStopMotor();
+void onLoraModeUpdate(uint8_t idx);
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -68,6 +69,10 @@ unsigned long armingStartTime = 0;
 unsigned long noButtonPressStartTime = 0;
 unsigned long lastKeepaliveTime = 0;
 bool stopDelayActive = false; // Flag for delayed stop functionality
+
+// 🔄 Mode tracking
+static uint8_t currentModeIdx = 0;
+static const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
 
 // ─── Remote Settings ───
 extern unsigned long remoteStopDelayMs; // Configurable stop delay from Settings_remote
@@ -117,6 +122,17 @@ void onLoraStopMotor() {
     Serial.println("[Remote] STOP_MOTOR received – switching to IDLE");
     stateManager.switchToIdle();
     stopDelayActive = false; // Reset delay flag when ride ends
+}
+
+// 🔄 MODE_UPDATE callback
+void onLoraModeUpdate(uint8_t idx) {
+    Serial.printf("[Remote] onLoraModeUpdate called with idx=%d\n", idx);
+    if (idx < 4) {
+        currentModeIdx = idx;
+        Serial.printf("[Remote] Mode updated to %s (%d)\n", modeNames[idx], idx);
+    } else {
+        Serial.printf("[Remote] Invalid mode index received: %d\n", idx);
+    }
 }
 
 // ─────────────────────────────────────────
@@ -209,7 +225,7 @@ void drawForState() {
         case StateManager_remote::State::IDLE:
         case StateManager_remote::State::ARMING:
         case StateManager_remote::State::CRUISING:
-             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState(), stopDelayActive, remoteStopDelayMs);
+             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState(), modeNames[currentModeIdx], stopDelayActive, remoteStopDelayMs);
             break;
         case StateManager_remote::State::MENU:
             displayManager.drawMenuScreen(stateManager.getShownPercentage());
@@ -263,6 +279,7 @@ void setup() {
     loraManager.onLoRaSettingsReceived(onLoraSettingsReceived);
     loraManager.onRemoteSettingsReceived(onLoraRemoteSettingsReceived);
     loraManager.onStopMotor(onLoraStopMotor);
+    loraManager.onModeUpdate(onLoraModeUpdate);
 
     // --- Button Callbacks ---
     upButton.onPress(handleUpButtonPress);

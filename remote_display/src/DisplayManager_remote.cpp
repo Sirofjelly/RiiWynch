@@ -8,7 +8,7 @@ void DisplayManager_remote::begin() {
     u8g2.begin();
 }
 
-void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState, bool showDelay, unsigned long delayMs) {
+void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t battery_mv, StateManager_remote::State currentState, const char* mode, bool showDelay, unsigned long delayMs) {
     u8g2.clearBuffer();
     RiiWynch::UI::drawFrame(u8g2);
     
@@ -64,6 +64,10 @@ void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t
         int delayWidth = u8g2.getStrWidth(delayText);
         u8g2.drawStr((128 - delayWidth) / 2, 58, delayText);
     }
+    
+    // 🔄 Draw current mode at bottom left
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.drawStr(6, 58, mode);
     
     u8g2.sendBuffer();
 }

@@ -63,6 +63,9 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
                 // Also send a DSP update back to confirm the state
                 vTaskDelay(pdMS_TO_TICKS(20));
                 sendDisplayPercentage(msg.payload.percentage);
+
+                // 🔄 Additionally, send the current mode so remote stays in sync
+                sendModeUpdate(static_cast<uint8_t>(getGlobalProfileManager().getCurrentProfile()));
             } else {
                 Serial.println("[LORA RX] Ignored VAL, remote not connected.");
             }
@@ -169,6 +172,20 @@ void LoRaManager::sendAck(RiiWynch::Protocol::MessageType type, uint8_t percenta
         Serial.printf("[LORA TX] ACK: %d%%\n", percentage);
     } else {
         Serial.printf("[LORA TX] Failed to send ACK for %d%%\n", percentage);
+    }
+}
+
+void LoRaManager::sendModeUpdate(uint8_t modeIdx) {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::MODE_UPDATE;
+    msg.source = RiiWynch::Protocol::DeviceID::MAIN_DISPLAY;
+    msg.packetCounter = packetCounter++;
+    msg.payload.modeIndex = modeIdx;
+
+    if (transceiver.transmit(msg)) {
+        Serial.printf("[LORA TX] MODE_UPDATE: %d\n", modeIdx);
+    } else {
+        Serial.println("[LORA TX] Failed to send MODE_UPDATE");
     }
 }
 
