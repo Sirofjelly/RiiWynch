@@ -30,6 +30,11 @@ private:
     bool remoteConnected;
     static const unsigned long HEARTBEAT_TIMEOUT = 2000; // ms
     
+    // Emergency stop recovery state
+    bool inEmergencyStop;
+    unsigned long emergencyStopStartTime;
+    static const unsigned long RECOVERY_TIMEOUT = 500; // 3 seconds as requested
+    
     // FreeRTOS task
     TaskHandle_t taskHandle;
     SemaphoreHandle_t heartbeatMutex;
@@ -38,6 +43,7 @@ private:
     static void heartbeatTask(void* parameter);
     void checkTimeout();
     void executeEmergencyStop();
+    void handleReconnection();
     
     // Static instance for task access
     static HeartbeatManager* instance;

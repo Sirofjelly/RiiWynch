@@ -6,7 +6,8 @@
 HeartbeatManager* HeartbeatManager::instance = nullptr;
 
 HeartbeatManager::HeartbeatManager(StateManager& stateMgr, DisplayManager& displayMgr)
-    : state(stateMgr), display(displayMgr), profileManager(nullptr), remoteConnected(false), taskHandle(NULL) {
+    : state(stateMgr), display(displayMgr), profileManager(nullptr), remoteConnected(false), 
+      inEmergencyStop(false), emergencyStopStartTime(0), taskHandle(NULL) {
     instance = this;
     lastHeartbeatTime = millis(); // Initialize to current time to avoid immediate timeout
 }
@@ -52,6 +53,13 @@ void HeartbeatManager::onHeartbeatReceived() {
     // Take mutex before accessing shared heartbeat variables
     if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         lastHeartbeatTime = millis();
+        
+        // Check if we're recovering from an emergency stop
+        if (!remoteConnected && inEmergencyStop) {
+            Serial.println("[HBT Monitor] Remote reconnected! Starting recovery sequence.");
+            handleReconnection();
+        }
+        
         remoteConnected = true;
         xSemaphoreGive(heartbeatMutex);
     }
@@ -78,10 +86,18 @@ void HeartbeatManager::heartbeatTask(void* parameter) {
 void HeartbeatManager::checkTimeout() {
     // Take mutex before accessing shared heartbeat variables
     if (xSemaphoreTake(heartbeatMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        // Check for heartbeat timeout
+        // Check for heartbeat timeout (connection loss)
         if (remoteConnected && (millis() - lastHeartbeatTime > HEARTBEAT_TIMEOUT)) {
             Serial.println("[HBT Monitor] Remote connection lost! Initiating STOP sequence.");
             executeEmergencyStop();
+        }
+        
+        // Check for recovery timeout (auto-exit after 3 seconds of reconnection)
+        if (inEmergencyStop && remoteConnected && 
+            (millis() - emergencyStopStartTime >= RECOVERY_TIMEOUT)) {
+            Serial.println("[HBT Monitor] Recovery timeout reached, exiting emergency stop.");
+            state.exitStop();
+            inEmergencyStop = false;
         }
         
         // Release mutex
@@ -90,14 +106,23 @@ void HeartbeatManager::checkTimeout() {
 }
 
 void HeartbeatManager::executeEmergencyStop() {
-    // Key safety action - stop the system immediately
-    state.setState(StateManager::State::STOPPED);
+    // Key safety action - stop the system immediately using timeout mechanism
+    state.stopWithTimeout(RECOVERY_TIMEOUT); // Use timeout instead of direct setState
     
     // Update display to show connection lost
     display.updateText("Lost");
     
-    // Update connection status
+    // Update connection status and emergency stop tracking
     remoteConnected = false;
+    inEmergencyStop = true;
+    emergencyStopStartTime = millis();
     
-    Serial.println("[HBT Monitor] Emergency stop executed");
+    Serial.println("[HBT Monitor] Emergency stop executed with recovery timeout");
+}
+
+void HeartbeatManager::handleReconnection() {
+    // When remote reconnects, start the recovery timer
+    // The system will automatically exit STOPPED state after RECOVERY_TIMEOUT
+    emergencyStopStartTime = millis();
+    Serial.printf("[HBT Monitor] Recovery timer started, will auto-exit stop in %lu ms\n", RECOVERY_TIMEOUT);
 } 
