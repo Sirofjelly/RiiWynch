@@ -211,7 +211,7 @@ void LoRaManager::sendStopMotor() {
     msg.source = RiiWynch::Protocol::DeviceID::MAIN_DISPLAY;
     msg.packetCounter = packetCounter++;
 
-    if (transceiver.transmit(msg)) {
+    if (transceiver.transmitWithPriority(msg, MessagePriority::CRITICAL_PRIORITY)) {
         Serial.println("[LORA TX] STOP_MOTOR");
     } else {
         Serial.println("[LORA TX] Failed to send STOP_MOTOR");

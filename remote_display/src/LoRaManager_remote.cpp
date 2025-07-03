@@ -168,7 +168,7 @@ void LoRaManager_remote::sendStartMotor() {
     msg.type = RiiWynch::Protocol::MessageType::START_MOTOR;
     msg.source = RiiWynch::Protocol::DeviceID::REMOTE;
     msg.packetCounter = packetCounter++;
-    if (!transceiver.transmit(msg)) {
+    if (!transceiver.transmitWithPriority(msg, MessagePriority::CRITICAL_PRIORITY)) {
         Serial.println("[LORA TX] Failed to send START_MOTOR");
     }
 }
@@ -178,7 +178,7 @@ void LoRaManager_remote::sendStopMotor() {
     msg.type = RiiWynch::Protocol::MessageType::STOP_MOTOR;
     msg.source = RiiWynch::Protocol::DeviceID::REMOTE;
     msg.packetCounter = packetCounter++;
-    if (!transceiver.transmit(msg)) {
+    if (!transceiver.transmitWithPriority(msg, MessagePriority::CRITICAL_PRIORITY)) {
         Serial.println("[LORA TX] Failed to send STOP_MOTOR");
     }
 }

@@ -289,7 +289,7 @@ void setup() {
     downButton.onHold(decPctSingle, 75);
     
     // The heartbeat task is no longer needed as KEEPALIVE serves a more specific purpose
-    xTaskCreatePinnedToCore(heartbeatTask, "HeartbeatTask", 2048, NULL, 2, &heartbeatTaskHandle, 0);
+    xTaskCreatePinnedToCore(heartbeatTask, "HeartbeatTask", 2048, NULL, 1, &heartbeatTaskHandle, 0);
     
     Serial.println("Setup complete.");
 }

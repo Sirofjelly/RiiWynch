@@ -25,7 +25,7 @@ bool HeartbeatManager::begin() {
         "HeartbeatMonitor",   // Task name
         2048,                 // Stack size (bytes)
         NULL,                 // Task parameter
-        3,                    // Priority (higher than default for safety)
+        2,                    // Priority (balanced priority for monitoring)
         &taskHandle,          // Task handle
         0                     // Core ID (0 or 1)
     );

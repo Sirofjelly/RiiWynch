@@ -23,6 +23,7 @@ void IRAM_ATTR LoRaTransceiver::onReceive() {
 }
 
 bool LoRaTransceiver::begin(float freq, int power, int sf, int cr, float bw) {
+    // Create mutex with priority inheritance to prevent priority inversion
     loraMutex = xSemaphoreCreateMutex();
     if (loraMutex == NULL) {
         Serial.println("[Transceiver] Failed to create LoRa mutex!");
@@ -56,9 +57,90 @@ bool LoRaTransceiver::begin(float freq, int power, int sf, int cr, float bw) {
     return true;
 }
 
+MessagePriority LoRaTransceiver::getMessagePriority(const RiiWynch::Protocol::Message& msg) {
+    switch (msg.type) {
+        case RiiWynch::Protocol::MessageType::START_MOTOR:
+        case RiiWynch::Protocol::MessageType::STOP_MOTOR:
+            return MessagePriority::CRITICAL_PRIORITY;
+            
+        case RiiWynch::Protocol::MessageType::ACK_VAL:
+        case RiiWynch::Protocol::MessageType::ACK_DSP:
+        case RiiWynch::Protocol::MessageType::MODE_UPDATE:
+            return MessagePriority::HIGH_PRIORITY;
+            
+        case RiiWynch::Protocol::MessageType::KEEPALIVE:
+        case RiiWynch::Protocol::MessageType::VALUE_SET:
+        case RiiWynch::Protocol::MessageType::DISPLAY_UPDATE:
+        case RiiWynch::Protocol::MessageType::LORA_SETTINGS:
+        case RiiWynch::Protocol::MessageType::REMOTE_SETTINGS:
+            return MessagePriority::NORMAL_PRIORITY;
+            
+        case RiiWynch::Protocol::MessageType::HEARTBEAT:
+        case RiiWynch::Protocol::MessageType::BUTTON_PRESS:
+        default:
+            return MessagePriority::LOW_PRIORITY;
+    }
+}
+
+TickType_t LoRaTransceiver::getTimeoutForPriority(MessagePriority priority) {
+    switch (priority) {
+        case MessagePriority::CRITICAL_PRIORITY:
+            return pdMS_TO_TICKS(1000);  // 2 seconds for safety-critical messages
+        case MessagePriority::HIGH_PRIORITY:
+            return pdMS_TO_TICKS(500);   // 500ms for important messages
+        case MessagePriority::NORMAL_PRIORITY:
+            return pdMS_TO_TICKS(100);   // 100ms for normal messages
+        case MessagePriority::LOW_PRIORITY:
+        default:
+            return pdMS_TO_TICKS(50);    // 50ms for low priority messages
+    }
+}
+
+bool LoRaTransceiver::acquireMutexWithPriority(MessagePriority priority, TickType_t maxWait) {
+    // For critical messages, temporarily raise task priority to ensure they get through
+    UBaseType_t originalPriority = 0;
+    TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
+    
+    if (priority == MessagePriority::CRITICAL_PRIORITY) {
+        originalPriority = uxTaskPriorityGet(currentTask);
+        // Temporarily raise to highest priority to ensure critical messages get through
+        vTaskPrioritySet(currentTask, configMAX_PRIORITIES - 1);
+        Serial.printf("[Transceiver] CRITICAL message - raised task priority from %d to %d\n", 
+                     originalPriority, configMAX_PRIORITIES - 1);
+    }
+    
+    bool acquired = xSemaphoreTake(loraMutex, maxWait) == pdTRUE;
+    
+    // Restore original priority after attempting to acquire mutex
+    if (priority == MessagePriority::CRITICAL_PRIORITY && originalPriority > 0) {
+        vTaskPrioritySet(currentTask, originalPriority);
+        Serial.printf("[Transceiver] Restored task priority to %d\n", originalPriority);
+    }
+    
+    return acquired;
+}
+
 bool LoRaTransceiver::transmit(const RiiWynch::Protocol::Message& msg) {
-    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
-        Serial.println("[Transceiver TX] Failed to get mutex");
+    MessagePriority priority = getMessagePriority(msg);
+    return transmitWithPriority(msg, priority);
+}
+
+bool LoRaTransceiver::transmitWithPriority(const RiiWynch::Protocol::Message& msg, MessagePriority priority) {
+    TickType_t timeout = getTimeoutForPriority(priority);
+    
+    if (priority == MessagePriority::CRITICAL_PRIORITY) {
+        Serial.printf("[Transceiver] CRITICAL message type %d - using %dms timeout\n", 
+                     static_cast<int>(msg.type), pdTICKS_TO_MS(timeout));
+    }
+    
+    if (!acquireMutexWithPriority(priority, timeout)) {
+        Serial.printf("[Transceiver TX] Failed to get mutex for priority %d message (type %d) after %dms\n", 
+                     static_cast<int>(priority), static_cast<int>(msg.type), pdTICKS_TO_MS(timeout));
+        
+        // For critical messages, this is a severe error that needs attention
+        if (priority == MessagePriority::CRITICAL_PRIORITY) {
+            Serial.println("[Transceiver TX] !!! CRITICAL MESSAGE FAILED - SAFETY COMPROMISED !!!");
+        }
         return false;
     }
 
@@ -77,6 +159,10 @@ bool LoRaTransceiver::transmit(const RiiWynch::Protocol::Message& msg) {
             Serial.printf("[Transceiver TX] Error: %d\n", txResult);
         } else {
             result = true;
+            if (priority == MessagePriority::CRITICAL_PRIORITY) {
+                Serial.printf("[Transceiver] CRITICAL message type %d sent successfully\n", 
+                             static_cast<int>(msg.type));
+            }
         }
     }
 
