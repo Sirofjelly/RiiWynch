@@ -184,6 +184,8 @@ void handleDisplayUpdates(bool isStopped) {
   static int lastSentDisplayPct = -1; // Track last sent percentage to avoid duplicates
   static bool wasStopped = false;     // Track previous stopped state
   static bool lastModeActive = false; // Track mode display state
+  static unsigned long lastModeUpdateTime = 0; // Track last mode update sent
+  static const unsigned long MODE_UPDATE_INTERVAL = 2000; // Send mode every 2 seconds when not running
 
   // Check if mode display is currently active
   bool modeActive = display.isModeDisplayActive();
@@ -213,6 +215,17 @@ void handleDisplayUpdates(bool isStopped) {
       Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", dispPct);
       loraManager.sendDisplayPercentage(dispPct);
       lastSentDisplayPct = dispPct;
+  }
+
+  // Send periodic mode updates when motor is not running to keep remote in sync
+  bool motorRunning = (state.getState() == StateManager::State::RUNNING);
+  if (!motorRunning && isConnected) {
+      unsigned long currentTime = millis();
+      if (currentTime - lastModeUpdateTime >= MODE_UPDATE_INTERVAL) {
+          Serial.printf("[Main Loop] Sending periodic mode update: %s (motor not running)\n", currentMode);
+          loraManager.sendModeUpdate(static_cast<uint8_t>(profileManager.getCurrentProfile()));
+          lastModeUpdateTime = currentTime;
+      }
   }
 
   wasStopped = isStopped;
