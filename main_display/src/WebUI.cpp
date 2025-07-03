@@ -93,7 +93,7 @@ void handleLoraPage() {
     <button type="button" class="button" onclick="saveLoRaSettings()">Save LoRa</button>
   </form>
 
-  <div class="footer">Gmacht mit ❤ vom Silvan</div>
+  <div class="footer">Mit ❤ vom Silvan</div>
 
   <script>
     function showStatusMessage(message, isSuccess = true) {
@@ -196,7 +196,7 @@ void handleRoot() {
     <button type="button" class="button" onclick="saveSettings()">Save</button>
   </form>
 
-  <div class="footer">Gmacht mit ❤ vom Silvan</div>
+  <div class="footer">Mit ❤ vom Silvan</div>
 
   <script>
     const modeNames = ["SURF", "SKIM", "SMOOTH", "MANUAL"];
@@ -636,7 +636,7 @@ void handleStats() {
   html_content += String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s";
   html_content += R"rawliteral(</span></div>
   <button type="button" class="button" onclick="resetStats()">Reset Stats</button>
-  <div class="footer">Gmacht mit ❤ vom Silvan</div>
+  <div class="footer">Mit ❤ vom Silvan</div>
   <script>
     function resetStats() {
       if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
