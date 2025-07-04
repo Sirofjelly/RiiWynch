@@ -52,10 +52,10 @@ void setup() {
   
   // Initialize new buttons with callbacks
   upButton.onPress([&]() { state.increase(); });
-  upButton.onHold([&]() { state.increase(); }, 100); // 100ms repeat interval
+  upButton.onHold([&]() { state.increase(); }, 300); // Increased from 100ms to 300ms to reduce LoRa traffic
 
   downButton.onPress([&]() { state.decrease(); });
-  downButton.onHold([&]() { state.decrease(); }, 100);
+  downButton.onHold([&]() { state.decrease(); }, 300); // Increased from 100ms to 300ms to reduce LoRa traffic
 
   // Initialize existing subsystems
   setupButtons();
@@ -185,7 +185,10 @@ void handleDisplayUpdates(bool isStopped) {
   static bool wasStopped = false;     // Track previous stopped state
   static bool lastModeActive = false; // Track mode display state
   static unsigned long lastModeUpdateTime = 0; // Track last mode update sent
+  static unsigned long lastLoRaTransmissionTime = 0; // Track last LoRa transmission time
+  static int queuedDisplayPct = -1; // Track queued percentage due to throttling
   static const unsigned long MODE_UPDATE_INTERVAL = 2000; // Send mode every 2 seconds when not running
+  static const unsigned long LORA_TRANSMISSION_THROTTLE = 250; // Minimum 250ms between LoRa transmissions
 
   // Check if mode display is currently active
   bool modeActive = display.isModeDisplayActive();
@@ -210,11 +213,30 @@ void handleDisplayUpdates(bool isStopped) {
       }
   }
 
-  // Always sync percentage to remote when it changes
+  // Handle LoRa transmission with throttling and queuing
+  bool shouldSendNow = false;
+  
+  // Check if we have a new percentage or a queued one that needs to be sent
   if (dispPct != lastSentDisplayPct) {
-      Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", dispPct);
-      loraManager.sendDisplayPercentage(dispPct);
-      lastSentDisplayPct = dispPct;
+      queuedDisplayPct = dispPct; // Always queue the latest value
+  }
+  
+  // Check if we can send now (throttle period has passed and we have something queued)
+  if (queuedDisplayPct != -1 && queuedDisplayPct != lastSentDisplayPct && 
+      (millis() - lastLoRaTransmissionTime >= LORA_TRANSMISSION_THROTTLE)) {
+      shouldSendNow = true;
+  }
+  
+  if (shouldSendNow) {
+      Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", queuedDisplayPct);
+      loraManager.sendDisplayPercentage(queuedDisplayPct);
+      lastSentDisplayPct = queuedDisplayPct;
+      queuedDisplayPct = -1; // Clear the queue
+      lastLoRaTransmissionTime = millis();
+  } else if (dispPct != lastSentDisplayPct) {
+      // If we're being throttled, log it for debugging
+      Serial.printf("[Main Loop] Display change to %d%% queued (last tx %lu ms ago)\n", 
+                    dispPct, millis() - lastLoRaTransmissionTime);
   }
 
   // Send periodic mode updates when motor is not running to keep remote in sync
