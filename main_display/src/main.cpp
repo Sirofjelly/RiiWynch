@@ -142,7 +142,7 @@ void loop() {
   
   // Handle remote stop request with timeout (old behavior)
   if (remoteStopRequested) {
-    state.stopWithTimeout(5000); // Remote stops get 5 second timeout
+    state.stopWithTimeout(stopCooldownDuration); // Remote stops get 5 second timeout
   }
   
   // Update previous state for next iteration

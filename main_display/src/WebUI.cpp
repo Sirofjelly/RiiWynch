@@ -176,7 +176,7 @@ void handleRoot() {
   html_content += "<div class=\"form-row\"><label>Stage 1 Time (ms):</label><input name=\"stage1Duration\" type=\"text\" value=\"" + String(stage1Duration) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Stage 2 Speed (%) :</label><input name=\"stage2Speed\" type=\"text\" value=\"" + String(stage2SpeedPercentage) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Stage 2 Time (ms):</label><input name=\"stage2Duration\" type=\"text\" value=\"" + String(stage2Duration) + "\"></div>";
-  html_content += "<div class=\"form-row\"><label>Stage 3 Time (ms):</label><input name=\"stage3Duration\" type=\"text\" value=\"" + String(stage3Duration) + "\"></div>";
+  html_content += "<div class=\"form-row\"><label>Ramp-down Time Time (ms):</label><input name=\"stage3Duration\" type=\"text\" value=\"" + String(stage3Duration) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Gas Idle Angle (°):</label><input name=\"gasIdleAngle\" type=\"text\" value=\"" + String(gasIdleAngle) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Gas Max Angle (°):</label><input name=\"gasMaxAngle\" type=\"text\" value=\"" + String(gasMaxAngle) + "\"></div>";
   html_content += "<div class=\"form-row\"><label>Choke Angle (°):</label><input name=\"chokeAngle\" type=\"text\" value=\"" + String(chokeAngle) + "\"></div>";
