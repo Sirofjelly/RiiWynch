@@ -18,6 +18,9 @@ public:
     void sendStopMotor();
     void sendKeepalive();
     
+    float getCurrentRSSI(); // New: Get real-time RSSI
+    void updateRealTimeRSSI(); // New: Update real-time RSSI reading
+    
     // Callback functions to link with main application logic
     void onDisplayUpdate(void (*callback)(int percentage, float rssi));
     void onAckForValue(void (*callback)(int percentage));

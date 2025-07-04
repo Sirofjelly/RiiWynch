@@ -129,6 +129,9 @@ void loop() {
   // Update state machine
   state.update();
 
+  // Update real-time RSSI monitoring
+  loraManager.updateRealTimeRSSI();
+
   // Cache button and remote request states for this loop iteration
   bool startRequested = isStartPressed() || loraManager.getStartMotorRequest();
   bool localStopPressed = isStopPressed();
@@ -218,18 +221,18 @@ void handleDisplayUpdates(bool isStopped) {
   bool isConnected = heartbeatManager.isRemoteConnected();
 
   if (isStopped) {
-      // Draw STOP screen with mode and connection info
-      display.drawStopScreen(dispPct, loraManager.getRSSI(), currentMode, isConnected);
+      // Draw STOP screen with mode and connection info - using real-time RSSI
+      display.drawStopScreen(dispPct, loraManager.getCurrentRSSI(), currentMode, isConnected);
   } else {
       // If the mode screen just finished, draw the percentage screen once
       if (!modeActive && lastModeActive && !isStopped) {
-          display.update(dispPct, loraManager.getRSSI(), currentMode, isConnected);
+          display.update(dispPct, loraManager.getCurrentRSSI(), currentMode, isConnected);
       }
       
       // Regular percentage display logic
       if (state.needsDisplayUpdate() || wasStopped) {
           state.updateDisplayStep();
-          display.update(dispPct, loraManager.getRSSI(), currentMode, isConnected);
+          display.update(dispPct, loraManager.getCurrentRSSI(), currentMode, isConnected);
       }
   }
 

@@ -89,7 +89,7 @@ static bool dualActionProcessed = false;    // Prevent multiple toggles per gest
 // ─────────────────────────────────────────
 
 void onLoraDisplayUpdate(int percentage, float rssi) {
-    currentRSSI = rssi;
+    currentRSSI = rssi; // Keep this as fallback, but real-time RSSI is now used for display
     Serial.printf("[LORA CB] DSP: %d%% (current state: %d, targetPct: %d, shownPct: %d)\n", 
                  percentage, (int)stateManager.getState(), stateManager.getTargetPercentage(), stateManager.getShownPercentage());
 
@@ -225,7 +225,7 @@ void drawForState() {
         case StateManager_remote::State::IDLE:
         case StateManager_remote::State::ARMING:
         case StateManager_remote::State::CRUISING:
-             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState(), modeNames[currentModeIdx], stopDelayActive, remoteStopDelayMs);
+             displayManager.drawStartScreen(stateManager.getShownPercentage(), loraManager.getCurrentRSSI(), readBattery(), stateManager.getState(), modeNames[currentModeIdx], stopDelayActive, remoteStopDelayMs);
             break;
         case StateManager_remote::State::MENU:
             displayManager.drawMenuScreen(stateManager.getShownPercentage());
@@ -301,6 +301,9 @@ void loop() {
     loraManager.update();
     upButton.update();
     downButton.update();
+
+    // Update real-time RSSI monitoring
+    loraManager.updateRealTimeRSSI();
 
     bool anyButtonPressed = upButton.isPressed() || downButton.isPressed();
 

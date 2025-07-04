@@ -57,7 +57,7 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
             if (heartbeatManager && heartbeatManager->isRemoteConnected()) {
                 Serial.printf("[LORA RX] VAL: %d%%\n", msg.payload.percentage);
                 state.setDirectPercentage(msg.payload.percentage);
-                display.update(msg.payload.percentage, getRSSI(), getGlobalProfileManager().getCurrentModeName(), heartbeatManager->isRemoteConnected());
+                display.update(msg.payload.percentage, getCurrentRSSI(), getGlobalProfileManager().getCurrentModeName(), heartbeatManager->isRemoteConnected());
                 sendAck(RiiWynch::Protocol::MessageType::ACK_VAL, msg.payload.percentage);
                 
                 // Also send a DSP update back to confirm the state
@@ -220,4 +220,12 @@ void LoRaManager::sendStopMotor() {
 
 float LoRaManager::getRSSI() {
     return transceiver.getRSSI();
+}
+
+float LoRaManager::getCurrentRSSI() {
+    return transceiver.getCurrentRSSI();
+}
+
+void LoRaManager::updateRealTimeRSSI() {
+    transceiver.updateRealTimeRSSI();
 } 

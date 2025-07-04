@@ -20,6 +20,8 @@ public:
     void sendRemoteSettings(); // Send remote-specific settings to remote
     void sendStopMotor();   // Notify remote that motor has stopped
     float getRSSI();        // Access last RSSI value from transceiver
+    float getCurrentRSSI(); // New: Get real-time RSSI
+    void updateRealTimeRSSI(); // New: Update real-time RSSI reading
     void setHeartbeatManager(HeartbeatManager* hbMgr);
 
     bool getStartMotorRequest();

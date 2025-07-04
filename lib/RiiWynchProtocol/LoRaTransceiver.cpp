@@ -7,7 +7,9 @@ LoRaTransceiver* LoRaTransceiver::instance = nullptr;
 LoRaTransceiver::LoRaTransceiver()
     : mod(new Module(L_CS, L_DIO1, L_RST, L_BUSY, SPI)), 
       radio(mod),
-      messageReady(false) {
+      messageReady(false),
+      lastRSSI(-999.0),  // Initialize with invalid RSSI value
+      lastRSSIUpdate(0) {
     instance = this;
 }
 
@@ -216,4 +218,31 @@ bool LoRaTransceiver::receive(RiiWynch::Protocol::Message& msg) {
 
 float LoRaTransceiver::getRSSI() {
     return radio.getRSSI();
+}
+
+float LoRaTransceiver::getCurrentRSSI() {
+    return lastRSSI;
+}
+
+void LoRaTransceiver::updateRealTimeRSSI() {
+    // Only update RSSI if enough time has passed to avoid excessive polling
+    unsigned long currentTime = millis();
+    if (currentTime - lastRSSIUpdate < 100) { // Update at most every 100ms
+        return;
+    }
+    
+    // Try to get mutex with short timeout to avoid blocking message handling
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        // Read current RSSI - this works even when in receive mode
+        float newRSSI = radio.getRSSI();
+        
+        // Only update if we get a valid reading (not -999 or similar error values)
+        if (newRSSI > -200.0 && newRSSI < 50.0) { // Reasonable RSSI range
+            lastRSSI = newRSSI;
+            lastRSSIUpdate = currentTime;
+        }
+        
+        xSemaphoreGive(loraMutex);
+    }
+    // If we can't get the mutex, just skip this update - don't block
 } 

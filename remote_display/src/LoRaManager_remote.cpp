@@ -200,4 +200,12 @@ void LoRaManager_remote::sendAck(RiiWynch::Protocol::MessageType type, uint8_t p
     msg.packetCounter = packetCounter++;
     msg.payload.percentage = percentage;
     transceiver.transmit(msg);
+}
+
+float LoRaManager_remote::getCurrentRSSI() {
+    return transceiver.getCurrentRSSI();
+}
+
+void LoRaManager_remote::updateRealTimeRSSI() {
+    transceiver.updateRealTimeRSSI();
 } 

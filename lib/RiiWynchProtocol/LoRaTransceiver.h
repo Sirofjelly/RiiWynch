@@ -30,12 +30,16 @@ public:
     bool isMessageAvailable();
     bool receive(RiiWynch::Protocol::Message& msg);
     float getRSSI();
+    float getCurrentRSSI();
+    void updateRealTimeRSSI();
 
 private:
     Module* mod;
     SX1262 radio;
     SemaphoreHandle_t loraMutex;
     volatile bool messageReady;
+    float lastRSSI;
+    unsigned long lastRSSIUpdate;
     
     // Priority-based mutex acquisition
     bool acquireMutexWithPriority(MessagePriority priority, TickType_t maxWait);
