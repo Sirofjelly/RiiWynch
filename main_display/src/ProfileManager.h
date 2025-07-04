@@ -44,7 +44,7 @@ private:
     bool upButtonWasPressed = false;
     bool downButtonWasPressed = false;
     unsigned long lastButtonCheckTime = 0;
-    static const unsigned long MODE_SWITCH_HOLD_TIME = 2000; // ms, adjust as needed
+    static const unsigned long MODE_SWITCH_HOLD_TIME = 1000; // ms, adjust as needed
     // =============================
 
     void loadProfile(int profileIndex);
