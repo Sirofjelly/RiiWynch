@@ -69,7 +69,7 @@ void StateManager::increase() {
 
 void StateManager::decrease() {
   if (targetPercentage > 0) {
-    targetPercentage -= 5;
+    targetPercentage = max(0, targetPercentage - 5);
     displayedPercentage = targetPercentage;
     displayUpdateRequested = true;
     lastUpdateTime = millis();
