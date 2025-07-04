@@ -89,7 +89,6 @@ void handleLoraPage() {
   html_content += "<div class=\"form-row\"><label>Bandwidth (kHz):</label><input name=\"loraBandwidth\" type=\"text\" value=\"" + String(loraBandwidth, 1) + "\"></div>";
   
   html_content += R"rawliteral(
-    <button type="button" class="button" onclick="applyLoRaSettings()">Apply LoRa</button>
     <button type="button" class="button" onclick="saveLoRaSettings()">Save LoRa</button>
   </form>
 
@@ -105,13 +104,7 @@ void handleLoraPage() {
       statusElem.innerHTML = message;
       setTimeout(() => { statusElem.style.display = 'none'; }, 5000);
     }
-    function applyLoRaSettings() {
-      const formData = new FormData(document.getElementById('loraSettingsForm'));
-      fetch('/setLora', { method: 'POST', body: formData })
-      .then(response => response.text())
-      .then(data => { showStatusMessage('LoRa settings applied successfully!'); })
-      .catch(error => { showStatusMessage('Error applying LoRa settings: ' + error, false); });
-    }
+
     function saveLoRaSettings() {
       const form = document.getElementById('loraSettingsForm');
       const formData = new FormData(form);
@@ -192,7 +185,6 @@ void handleRoot() {
   html_content += "<div class=\"form-row\"><label>Remote Stop Delay (ms):</label><input name=\"remoteStopDelayMs\" type=\"text\" value=\"" + String(remoteStopDelayMs) + "\"></div>";
   
   html_content += R"rawliteral(
-    <button type="button" class="button" onclick="applySettings()">Apply</button>
     <button type="button" class="button" onclick="saveSettings()">Save</button>
   </form>
 
@@ -216,14 +208,7 @@ void handleRoot() {
       statusElem.innerHTML = message;
       setTimeout(() => { statusElem.style.display = 'none'; }, 5000);
     }
-    function applySettings() {
-      const formData = new FormData(document.getElementById('settingsForm'));
-      fetch('/set', { method: 'POST', body: formData })
-      .then(response => response.text())
-      .then(data => { showStatusMessage('Settings applied successfully!'); })
-      .catch(error => { showStatusMessage('Error applying settings: ' + error, false); });
-      updateModeBox();
-    }
+
     function saveSettings() {
       const form = document.getElementById('settingsForm');
       const formData = new FormData(form);
@@ -264,72 +249,7 @@ void handleRoot() {
   server.send(200, "text/html", html_content);
 }
 
-void handleSet() {
-  Serial.println("🔧 Applying temporary values (not saving to EEPROM):");
-  
-  // Save old values for debugging
-  unsigned long oldStarterTime = starterRelayTime;
-  int oldGasIdle = gasIdleAngle;
-  
-  // Parse values with careful type conversion
-  if (server.hasArg("starterRelayTime")) {
-    starterRelayTime = server.arg("starterRelayTime").toInt();
-    Serial.printf("  Starter Relay Time: %lu (was %lu)\n", starterRelayTime, oldStarterTime);
-  }
-  
-  if (server.hasArg("stage1Duration")) {
-    stage1Duration = server.arg("stage1Duration").toInt();
-  }
-  
-  if (server.hasArg("stage1Speed")) {
-    // Convert to float with bounds checking
-    stage1SpeedPercentage = server.arg("stage1Speed").toInt();
-  }
-  
-  if (server.hasArg("stage2Speed")) {
-    stage2SpeedPercentage = server.arg("stage2Speed").toInt();
-  }
-  
-  if (server.hasArg("stage2Duration")) {
-    stage2Duration = server.arg("stage2Duration").toInt();
-  }
-  
-  if (server.hasArg("stage3Duration")) {
-    stage3Duration = server.arg("stage3Duration").toInt();
-  }
-  
-  if (server.hasArg("gasIdleAngle")) {
-    gasIdleAngle = server.arg("gasIdleAngle").toInt();
-    Serial.printf("  Gas Idle Angle: %d (was %d)\n", gasIdleAngle, oldGasIdle);
-  }
-  
-  if (server.hasArg("gasMaxAngle")) {
-    gasMaxAngle = server.arg("gasMaxAngle").toInt();
-  }
-  
-  if (server.hasArg("chokeAngle")) {
-    chokeAngle = server.arg("chokeAngle").toInt();
-  }
-  
-  if (server.hasArg("brakeAngle")) {
-    brakeAngle = server.arg("brakeAngle").toInt();
-  }
-  
-  if (server.hasArg("stopCooldownDuration")) {
-    stopCooldownDuration = server.arg("stopCooldownDuration").toInt();
-  }
-  
-  if (server.hasArg("remoteStopDelayMs")) {
-    remoteStopDelayMs = server.arg("remoteStopDelayMs").toInt();
-    Serial.printf("  Remote Stop Delay: %lu ms\n", remoteStopDelayMs);
-    
-    // Send the new setting to the remote
-    getGlobalLoRaManager().sendRemoteSettings();
-  }
 
-  // Send a simple success response for AJAX request
-  server.send(200, "text/plain", "OK");
-}
 
 void handleSetDefault() {
   Serial.println("🔄 Saving values to profile...");
@@ -389,6 +309,9 @@ void handleSetDefault() {
   if (server.hasArg("remoteStopDelayMs")) {
     remoteStopDelayMs = server.arg("remoteStopDelayMs").toInt();
     Serial.printf("  Remote Stop Delay: %lu ms\n", remoteStopDelayMs);
+    
+    // Send the new setting to the remote
+    getGlobalLoRaManager().sendRemoteSettings();
   }
   
   // Explicitly save to the current profile using ProfileManager
@@ -464,76 +387,7 @@ void handleGetMode() {
   server.send(200, "application/json", jsonResponse);
 }
 
-void handleSetLora() {
-  Serial.println("📡 Applying temporary LoRa values (not saving to EEPROM):");
-  
-  // Parse LoRa values with validation
-  if (server.hasArg("loraFrequency")) {
-    float newFreq = server.arg("loraFrequency").toFloat();
-    if (newFreq >= 863.0 && newFreq <= 870.0) {
-      loraFrequency = newFreq;
-      Serial.printf("  Frequency: %.1f MHz\n", loraFrequency);
-    } else {
-      Serial.println("  Invalid frequency (must be 863-870 MHz)");
-    }
-  }
-  
-  if (server.hasArg("loraPower")) {
-    int newPower = server.arg("loraPower").toInt();
-    if (newPower >= 2 && newPower <= 22) {
-      loraPower = newPower;
-      Serial.printf("  Power: %d dBm\n", loraPower);
-    } else {
-      Serial.println("  Invalid power (must be 2-22 dBm)");
-    }
-  }
-  
-  if (server.hasArg("loraSpreadingFactor")) {
-    int newSF = server.arg("loraSpreadingFactor").toInt();
-    if (newSF >= 7 && newSF <= 12) {
-      loraSpreadingFactor = newSF;
-      Serial.printf("  Spreading Factor: %d\n", loraSpreadingFactor);
-    } else {
-      Serial.println("  Invalid SF (must be 7-12)");
-    }
-  }
-  
-  if (server.hasArg("loraCodingRate")) {
-    int newCR = server.arg("loraCodingRate").toInt();
-    if (newCR >= 5 && newCR <= 8) {
-      loraCodingRate = newCR;
-      Serial.printf("  Coding Rate: %d\n", loraCodingRate);
-    } else {
-      Serial.println("  Invalid CR (must be 5-8)");
-    }
-  }
-  
-  if (server.hasArg("loraBandwidth")) {
-    float newBW = server.arg("loraBandwidth").toFloat();
-    // Validate against common bandwidth values
-    if (newBW >= 7.8 && newBW <= 500.0) {
-      loraBandwidth = newBW;
-      Serial.printf("  Bandwidth: %.1f kHz\n", loraBandwidth);
-    } else {
-      Serial.println("  Invalid bandwidth (must be 7.8-500 kHz)");
-    }
-  }
 
-  // Restart LoRa with new settings
-  Serial.println("📡 Restarting LoRa with new settings...");
-  if (getGlobalLoRaManager().restart()) {
-    Serial.println("✅ LoRa restarted successfully");
-    
-    // Send new settings to remote
-    Serial.println("📡 Sending new LoRa settings to remote...");
-    getGlobalLoRaManager().sendLoRaSettings();
-    
-    server.send(200, "text/plain", "OK");
-  } else {
-    Serial.println("❌ LoRa restart failed");
-    server.send(500, "text/plain", "LoRa restart failed");
-  }
-}
 
 void handleSaveLora() {
   Serial.println("💾 Saving LoRa values to EEPROM...");
@@ -662,12 +516,10 @@ void setupWebUI() {
   server.on("/", handleRoot);
   server.on("/stats", handleStats);
   server.on("/resetStats", HTTP_POST, handleResetStats);
-  server.on("/set", HTTP_POST, handleSet);
   server.on("/save", HTTP_POST, handleSetDefault); // Change from "/set-default" to "/save"
   server.on("/toggleManual", handleToggleManual);
   server.on("/switchProfile", handleSwitchProfile);
   server.on("/getMode", handleGetMode); // New endpoint
-  server.on("/setLora", HTTP_POST, handleSetLora); // New LoRa endpoints
   server.on("/saveLora", HTTP_POST, handleSaveLora);
   server.on("/lora", handleLoraPage);
   server.begin();
