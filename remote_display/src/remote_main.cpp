@@ -235,7 +235,7 @@ void drawForState() {
 uint16_t readBattery() {
     const float VREF = 3.3;        // Reference voltage for ADC
     const int MAX = 4095;          // 12-bit ADC resolution
-    const float DIV = 2.0;         // Voltage divider ratio (2x100k resistors on Heltec board)
+    const float DIV = 5.15;         // Voltage divider ratio (2x100k resistors on Heltec board)
     const float MIN_VOLTAGE = 2.5; // Minimum discharge voltage
     const float MAX_VOLTAGE = 4.2; // Maximum charge voltage
     
