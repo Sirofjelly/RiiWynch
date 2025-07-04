@@ -60,7 +60,7 @@ void StateManager::setDirectPercentage(int percentage) {
 
 void StateManager::increase() {
   if (targetPercentage < 100) {
-    targetPercentage += 5;
+    targetPercentage += 1;  // Changed from 5 to 1 to match remote behavior
     displayedPercentage = targetPercentage;
     displayUpdateRequested = true;
     lastUpdateTime = millis();
@@ -69,7 +69,7 @@ void StateManager::increase() {
 
 void StateManager::decrease() {
   if (targetPercentage > 0) {
-    targetPercentage = max(0, targetPercentage - 5);
+    targetPercentage = max(0, targetPercentage - 1);  // Changed from 5 to 1 to match remote behavior
     displayedPercentage = targetPercentage;
     displayUpdateRequested = true;
     lastUpdateTime = millis();

@@ -32,7 +32,7 @@ namespace Config {
     static const unsigned long DEBOUNCE_MS = 20;
     static const unsigned long REPEAT_MS = 200;
     static const unsigned long MENU_TIMEOUT_MS = 1500;
-    static const unsigned long START_UPDATE_MS = 500;
+    static const unsigned long START_UPDATE_MS = 50;  // Reduced from 500ms to 50ms for responsive display
     static const unsigned long TRIPLE_TAP_WINDOW = 1500;
     static const int PERCENTAGE_STEP = 5;
     static const int SMOOTH_UPDATE_MS = 50;

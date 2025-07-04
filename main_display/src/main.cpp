@@ -52,10 +52,10 @@ void setup() {
   
   // Initialize new buttons with callbacks
   upButton.onPress([&]() { state.increase(); });
-  upButton.onHold([&]() { state.increase(); }, 300); // Increased from 100ms to 300ms to reduce LoRa traffic
+  upButton.onHold([&]() { state.increase(); }, 75); // Reduced to 75ms to match remote responsiveness
 
   downButton.onPress([&]() { state.decrease(); });
-  downButton.onHold([&]() { state.decrease(); }, 300); // Increased from 100ms to 300ms to reduce LoRa traffic
+  downButton.onHold([&]() { state.decrease(); }, 75); // Reduced to 75ms to match remote responsiveness
 
   // Initialize existing subsystems
   setupButtons();
@@ -185,10 +185,14 @@ void handleDisplayUpdates(bool isStopped) {
   static bool wasStopped = false;     // Track previous stopped state
   static bool lastModeActive = false; // Track mode display state
   static unsigned long lastModeUpdateTime = 0; // Track last mode update sent
-  static unsigned long lastLoRaTransmissionTime = 0; // Track last LoRa transmission time
-  static int queuedDisplayPct = -1; // Track queued percentage due to throttling
+    static unsigned long lastLoRaTransmissionTime = 0; // Track last LoRa transmission time
   static const unsigned long MODE_UPDATE_INTERVAL = 2000; // Send mode every 2 seconds when not running
   static const unsigned long LORA_TRANSMISSION_THROTTLE = 250; // Minimum 250ms between LoRa transmissions
+  
+  // New: Delayed sending mechanism to reduce LoRa traffic during rapid changes
+  static int lastStableDisplayPct = -1; // Track last stable percentage value
+  static unsigned long lastPercentageChangeTime = 0; // When percentage last changed
+  static const unsigned long PERCENTAGE_STABILIZATION_DELAY = 300; // Wait 300ms after last change before sending
 
   // Check if mode display is currently active
   bool modeActive = display.isModeDisplayActive();
@@ -213,30 +217,33 @@ void handleDisplayUpdates(bool isStopped) {
       }
   }
 
-  // Handle LoRa transmission with throttling and queuing
-  bool shouldSendNow = false;
-  
-  // Check if we have a new percentage or a queued one that needs to be sent
-  if (dispPct != lastSentDisplayPct) {
-      queuedDisplayPct = dispPct; // Always queue the latest value
+  // Track percentage changes for stabilization delay
+  if (dispPct != lastStableDisplayPct) {
+      lastStableDisplayPct = dispPct;
+      lastPercentageChangeTime = millis();
+      Serial.printf("[Main Loop] Percentage changed to %d%%, starting stabilization timer\n", dispPct);
   }
+
+  // Handle LoRa transmission with stabilization delay
+  bool shouldSendNow = false;
+  bool percentageHasStabilized = (millis() - lastPercentageChangeTime >= PERCENTAGE_STABILIZATION_DELAY);
   
-  // Check if we can send now (throttle period has passed and we have something queued)
-  if (queuedDisplayPct != -1 && queuedDisplayPct != lastSentDisplayPct && 
+  // Check if we should send: percentage has stabilized, it's different from last sent, and throttle period has passed
+  if (dispPct != lastSentDisplayPct && percentageHasStabilized && 
       (millis() - lastLoRaTransmissionTime >= LORA_TRANSMISSION_THROTTLE)) {
       shouldSendNow = true;
   }
   
   if (shouldSendNow) {
-      Serial.printf("[Main Loop] Display updated to %d%%, syncing to remote\n", queuedDisplayPct);
-      loraManager.sendDisplayPercentage(queuedDisplayPct);
-      lastSentDisplayPct = queuedDisplayPct;
-      queuedDisplayPct = -1; // Clear the queue
+      Serial.printf("[Main Loop] Percentage stabilized at %d%%, syncing to remote\n", dispPct);
+      loraManager.sendDisplayPercentage(dispPct);
+      lastSentDisplayPct = dispPct;
       lastLoRaTransmissionTime = millis();
-  } else if (dispPct != lastSentDisplayPct) {
-      // If we're being throttled, log it for debugging
-      Serial.printf("[Main Loop] Display change to %d%% queued (last tx %lu ms ago)\n", 
-                    dispPct, millis() - lastLoRaTransmissionTime);
+  } else if (dispPct != lastSentDisplayPct && !percentageHasStabilized) {
+      // If we're waiting for stabilization, log it for debugging
+      unsigned long timeRemaining = PERCENTAGE_STABILIZATION_DELAY - (millis() - lastPercentageChangeTime);
+      Serial.printf("[Main Loop] Waiting for stabilization: %d%% (remaining: %lu ms)\n", 
+                    dispPct, timeRemaining);
   }
 
   // Send periodic mode updates when motor is not running to keep remote in sync
