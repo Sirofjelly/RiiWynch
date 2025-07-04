@@ -16,6 +16,7 @@ void ProfileManager::begin() {
     modeState = 0;
     currentProfile = 0; // Always start in Auto 1
     manualMode = false;
+    inModeSwitchState = false; // Initialize the flag
     
     // Sync global variables to match ProfileManager state
     ::currentProfile = this->currentProfile;
@@ -40,6 +41,7 @@ void ProfileManager::checkModeSwitch(bool stopPressed) {
             lastButtonCheckTime = millis();
             upButtonWasPressed = true;
             downButtonWasPressed = true;
+            inModeSwitchState = true; // Set the flag when both buttons are pressed
         } else {
             // Both buttons are still being held, check if hold time has passed
             if (millis() - lastButtonCheckTime >= MODE_SWITCH_HOLD_TIME) {
@@ -52,7 +54,12 @@ void ProfileManager::checkModeSwitch(bool stopPressed) {
         // If either button is released, reset the state
         upButtonWasPressed = false;
         downButtonWasPressed = false;
+        inModeSwitchState = false; // Clear the flag when buttons are released
     }
+}
+
+bool ProfileManager::isInModeSwitchState() const {
+    return inModeSwitchState;
 }
 
 void ProfileManager::switchToNextMode() {

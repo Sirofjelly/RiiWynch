@@ -51,11 +51,27 @@ void setup() {
   Serial.println("Starting Setup.");
   
   // Initialize new buttons with callbacks
-  upButton.onPress([&]() { state.increase(); });
-  upButton.onHold([&]() { state.increase(); }, 75); // Reduced to 75ms to match remote responsiveness
+  upButton.onPress([&]() { 
+    if (!profileManager.isInModeSwitchState()) {
+      state.increase(); 
+    }
+  });
+  upButton.onHold([&]() { 
+    if (!profileManager.isInModeSwitchState()) {
+      state.increase(); 
+    }
+  }, 75); // Reduced to 75ms to match remote responsiveness
 
-  downButton.onPress([&]() { state.decrease(); });
-  downButton.onHold([&]() { state.decrease(); }, 75); // Reduced to 75ms to match remote responsiveness
+  downButton.onPress([&]() { 
+    if (!profileManager.isInModeSwitchState()) {
+      state.decrease(); 
+    }
+  });
+  downButton.onHold([&]() { 
+    if (!profileManager.isInModeSwitchState()) {
+      state.decrease(); 
+    }
+  }, 75); // Reduced to 75ms to match remote responsiveness
 
   // Initialize existing subsystems
   setupButtons();

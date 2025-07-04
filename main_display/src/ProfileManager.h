@@ -16,6 +16,9 @@ public:
     bool isManualMode() const;
     void checkModeSwitch(bool stopPressed);
     
+    // New method to check if we're in potential mode switch state
+    bool isInModeSwitchState() const;
+    
     // New API methods for WebUI integration
     void setProfile(int profileIndex);  // Set specific profile directly
     void setManualMode(bool manual);    // Toggle manual mode
@@ -45,6 +48,9 @@ private:
     bool downButtonWasPressed = false;
     unsigned long lastButtonCheckTime = 0;
     static const unsigned long MODE_SWITCH_HOLD_TIME = 1000; // ms, adjust as needed
+    
+    // Flag to track when we're in potential mode switch state
+    bool inModeSwitchState = false;
     // =============================
 
     void loadProfile(int profileIndex);
