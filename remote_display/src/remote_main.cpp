@@ -488,7 +488,7 @@ void loop() {
                  gameBothPressStart = 0;
              }
 
-             if (!gamePaused && millis() - lastGameTick > GAME_TICK_MS) {
+             if (!gamePaused && millis() - lastGameTick > snakeGame.getCurrentSpeed()) {
                  snakeGame.update();
                  lastGameTick = millis();
                  if (snakeGame.isGameOver()) {

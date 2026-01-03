@@ -17,6 +17,8 @@ void SnakeGame::reset() {
     dir = Direction::RIGHT;
     score = 0;
     gameOver = false;
+    
+    shrinkPillActive = false;
     spawnFood();
 }
 
@@ -56,6 +58,22 @@ void SnakeGame::update() {
         // Let's see if it's food first.
     }
 
+    // 1. Check Gold Food Timeout (10s)
+    if (currentFoodType == FoodType::GOLD && millis() - foodSpawnTime > 10000) {
+        spawnFood(); // Re-spawn (likely normal)
+    }
+
+    // 2. Check Shrink Pill Collision
+    if (shrinkPillActive && newHead == shrinkPill) {
+        shrinkPillActive = false;
+        // Shrink by 5 (keep min 3)
+        int removeCount = 2;
+        while (snake.size() > 3 && removeCount > 0) {
+            snake.pop_back();
+            removeCount--;
+        }
+    }
+
     bool eating = (newHead == food);
     
     // Check self-collision
@@ -76,8 +94,18 @@ void SnakeGame::update() {
     snake.insert(snake.begin(), newHead);
 
     if (eating) {
-        score++;
+        if (currentFoodType == FoodType::GOLD) {
+            score += 5;
+        } else {
+            score += 1;
+        }
+        
         spawnFood();
+        
+        // Chance to spawn shrink pill (5%)
+        if (!shrinkPillActive && random(100) < 5) {
+            spawnShrinkPill();
+        }
     } else {
         snake.pop_back();
     }
@@ -124,8 +152,34 @@ void SnakeGame::spawnFood() {
         int x = random(GRID_WIDTH);
         int y = random(GRID_HEIGHT);
         Point p = {x, y};
-        if (!checkCollision(p)) {
+        // Ensure not on snake OR shrink pill
+        bool collision = checkCollision(p);
+        if (shrinkPillActive && p == shrinkPill) collision = true;
+        
+        if (!collision) {
             food = p;
+            // 10% chance for Gold
+            if (random(100) < 10) {
+                currentFoodType = FoodType::GOLD;
+            } else {
+                currentFoodType = FoodType::NORMAL;
+            }
+            foodSpawnTime = millis();
+            break;
+        }
+    }
+}
+
+void SnakeGame::spawnShrinkPill() {
+    while (true) {
+        int x = random(GRID_WIDTH);
+        int y = random(GRID_HEIGHT);
+        Point p = {x, y};
+        // Not on snake or food
+        if (!checkCollision(p) && !(p == food)) {
+            shrinkPill = p;
+            shrinkPillActive = true;
+            shrinkPillSpawnTime = millis();
             break;
         }
     }
@@ -136,4 +190,23 @@ bool SnakeGame::checkCollision(const Point& p) const {
         if (s == p) return true;
     }
     return false;
+}
+
+SnakeGame::FoodType SnakeGame::getFoodType() const {
+    return currentFoodType;
+}
+
+bool SnakeGame::isShrinkPillActive() const {
+    return shrinkPillActive;
+}
+
+Point SnakeGame::getShrinkPill() const {
+    return shrinkPill;
+}
+
+unsigned long SnakeGame::getCurrentSpeed() const {
+    // Base 200ms, -2ms per point, cap at 80ms
+    int delay = 200 - (score * 2);
+    if (delay < 80) delay = 80;
+    return (unsigned long)delay;
 }

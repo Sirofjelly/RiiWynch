@@ -23,6 +23,13 @@ public:
     // For rendering
     const std::vector<Point>& getSnake() const;
     Point getFood() const;
+    
+    // New Feature Accessors
+    enum class FoodType { NORMAL, GOLD };
+    FoodType getFoodType() const;
+    bool isShrinkPillActive() const;
+    Point getShrinkPill() const;
+    unsigned long getCurrentSpeed() const; // Dynamic speed
 
     // Constants
     static const int GRID_WIDTH = 30;
@@ -35,6 +42,15 @@ private:
     uint16_t score;
     bool gameOver;
 
+    // New Feature Variables
+    FoodType currentFoodType;
+    unsigned long foodSpawnTime;
+    
+    Point shrinkPill;
+    bool shrinkPillActive;
+    unsigned long shrinkPillSpawnTime;
+
     void spawnFood();
+    void spawnShrinkPill();
     bool checkCollision(const Point& p) const;
 };

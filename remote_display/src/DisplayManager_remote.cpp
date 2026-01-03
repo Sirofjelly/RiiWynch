@@ -114,8 +114,26 @@ void DisplayManager_remote::drawGameScreen(const SnakeGame& game, uint16_t highS
     
     // Draw Food
     Point food = game.getFood();
-    // Center of cell: +2, +2. Radius 2 for filled circle filling the box
-    u8g2.drawDisc(4 + food.x * 4 + 2, 14 + food.y * 4 + 2, 1);
+    int fx = 4 + food.x * 4;
+    int fy = 14 + food.y * 4;
+    
+    if (game.getFoodType() == SnakeGame::FoodType::GOLD) {
+        // Hollow Circle for Gold
+        u8g2.drawCircle(fx + 2, fy + 2, 2); 
+    } else {
+        // Solid Circle for Normal
+        u8g2.drawDisc(fx + 2, fy + 2, 1);
+    }
+    
+    // Draw Shrink Pill
+    if (game.isShrinkPillActive()) {
+        Point pill = game.getShrinkPill();
+        int px = 4 + pill.x * 4;
+        int py = 14 + pill.y * 4;
+        // Draw 'X'
+        u8g2.drawLine(px, py, px + 3, py + 3);
+        u8g2.drawLine(px + 3, py, px, py + 3);
+    }
     
     u8g2.sendBuffer();
 }
