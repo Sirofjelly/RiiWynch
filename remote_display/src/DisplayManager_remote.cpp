@@ -49,7 +49,7 @@ void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t
 
     // Battery
     char batBuf[8];
-    sprintf(batBuf, "%.2fV", battery_mv / 1000.0);
+    sprintf(batBuf, "%.1fV", battery_mv / 1000.0);
     u8g2.drawStr(128 - u8g2.getStrWidth(batBuf) - 6, 13, batBuf);
     
     // Delay indicator at bottom center

@@ -60,8 +60,9 @@ Button downButton(4);
 TaskHandle_t heartbeatTaskHandle = NULL;
 
 // ─── Pins ───
-#define VEXT     21
-#define VBAT     1 // Battery voltage pin for Heltec WiFi LoRa 32 V3 is GPIO1
+#define VEXT      21
+#define VBAT      1   // Battery voltage pin (GPIO1) - voltage divider output
+#define ADC_CTRL  37  // ADC control pin - must be LOW to enable battery reading
 
 // ─── Application State ───
 float currentRSSI = 0.0f;
@@ -238,23 +239,29 @@ void drawForState() {
     }
 }
 uint16_t readBattery() {
-    const float VREF = 3.3;        // Reference voltage for ADC
+    // Heltec V3 voltage divider: VBAT - 390k - GPIO1 - 100k - GND
+    // Divider ratio: (390k + 100k) / 100k = 4.9
+    // GPIO37 (ADC_CTRL) must be LOW to enable reading (HIGH for V3.2 boards)
+    const float VREF = 3.3;        // ADC reference voltage
     const int MAX = 4095;          // 12-bit ADC resolution
-    const float DIV = 5.15;         // Voltage divider ratio (2x100k resistors on Heltec board)
-    const float MIN_VOLTAGE = 2.5; // Minimum discharge voltage
-    const float MAX_VOLTAGE = 4.2; // Maximum charge voltage
-    
-    // On V3 boards, the battery voltage divider is always connected to GPIO1.
-    // No ADC_CTRL pin is needed.
-    int raw = analogRead(VBAT);
-    
-    // Calculate actual voltage
-    float voltage = (raw * VREF / MAX) * DIV;
-    
-    // Calculate percentage based on voltage range
-    float percentage = (voltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE) * 100.0;
-    percentage = constrain(percentage, 0.0, 100.0);
-    
+    const float DIVIDER = 4;     // Voltage divider ratio (390k/100k)
+
+    // Enable battery voltage divider (LOW for V3/V3.1, try HIGH if readings are wrong on V3.2)
+    digitalWrite(ADC_CTRL, HIGH);
+    delayMicroseconds(100);  // Let voltage stabilize
+
+    // Average multiple readings to reduce ADC noise
+    const int NUM_SAMPLES = 16;
+    uint32_t rawSum = 0;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        rawSum += analogRead(VBAT);
+        delayMicroseconds(50);
+    }
+    int raw = rawSum / NUM_SAMPLES;
+
+    // Calculate actual voltage: ADC_voltage * divider_ratio
+    float voltage = (raw * VREF / MAX) * DIVIDER;
+
     // Return voltage in millivolts
     return (uint16_t)(voltage * 1000);
 }
@@ -267,7 +274,9 @@ void setup() {
     Serial.println("Starting Setup of Remote...");
 
     pinMode(VEXT, OUTPUT); digitalWrite(VEXT, LOW);
+    pinMode(ADC_CTRL, OUTPUT);
     analogReadResolution(12);
+    analogSetPinAttenuation(VBAT, ADC_11db);  // Set proper ADC range for battery voltage reading
 
     // Load global LoRa settings
     loadGlobalLoRaSettings();
