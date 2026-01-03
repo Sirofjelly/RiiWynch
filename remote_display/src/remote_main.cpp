@@ -7,6 +7,7 @@
 #include "DisplayManager_remote.h"
 #include "StateManager_remote.h"
 #include "Settings_remote.h"
+#include "SnakeGame.h"
 
 // ─────────────────────────────────────────
 //         BASIC FORWARD DECLARATIONS
@@ -25,6 +26,13 @@ void onLoraSettingsReceived();
 void onLoraRemoteSettingsReceived();
 void onLoraStopMotor();
 void onLoraModeUpdate(uint8_t idx);
+
+// Game Globals
+SnakeGame snakeGame;
+unsigned long lastGameTick = 0;
+const unsigned long GAME_TICK_MS = 200;
+bool gamePaused = false;
+bool isNewHighScore = false;
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -178,14 +186,23 @@ void handleUpButtonPress() {
         enterMenuOnTriplePress();
     } else if (stateManager.getState() == StateManager_remote::State::MENU) {
         handleMenuNavigation(true);
-    }
-}
+            } else if (stateManager.getState() == StateManager_remote::State::GAME) {
+                snakeGame.turnLeft();
+            } else if (stateManager.getState() == StateManager_remote::State::GAME_OVER) {
+                stateManager.switchToIdle();
+                lastDisplayUpdate = 0; // Force immediate update
+            }}
 
 void handleDownButtonPress() {
     if (stateManager.getState() == StateManager_remote::State::IDLE) {
         enterMenuOnTriplePress();
     } else if (stateManager.getState() == StateManager_remote::State::MENU) {
         handleMenuNavigation(false);
+    } else if (stateManager.getState() == StateManager_remote::State::GAME) {
+        snakeGame.turnRight();
+    } else if (stateManager.getState() == StateManager_remote::State::GAME_OVER) {
+        stateManager.switchToIdle();
+        lastDisplayUpdate = 0; // Force immediate update
     }
 }
 
@@ -236,6 +253,12 @@ void drawForState() {
         case StateManager_remote::State::MENU:
             displayManager.drawMenuScreen(stateManager.getShownPercentage());
             break;
+        case StateManager_remote::State::GAME:
+            displayManager.drawGameScreen(snakeGame, snakeHighScore);
+            break;
+        case StateManager_remote::State::GAME_OVER:
+            displayManager.drawGameOverScreen(snakeGame.getScore(), snakeHighScore, isNewHighScore);
+            break;
     }
 }
 uint16_t readBattery() {
@@ -280,6 +303,7 @@ void setup() {
 
     // Load global LoRa settings
     loadGlobalLoRaSettings();
+    loadSnakeHighScore();
 
     displayManager.begin();
     drawForState();
@@ -350,10 +374,31 @@ void loop() {
                     break;
 
                 case DualPressState::BOTH_DOWN:
+                     // 1. Check for Game Entry (Hold Both > 2s)
+                    if (millis() - bothButtonsTime > 2000) {
+                        Serial.println("Entering Snake Game!");
+                        
+                        // Revert the delay toggle if it happened at 600ms
+                        if (dualActionProcessed) {
+                            stopDelayActive = !stopDelayActive;
+                            Serial.println("[Remote] Delay toggle reverted due to Game Entry");
+                        }
+                        
+                        stateManager.switchToGame();
+                        snakeGame.reset();
+                        gamePaused = false;
+                        
+                        // Reset FSM
+                        dualState = DualPressState::IDLE_WAIT;
+                        dualActionProcessed = false;
+                        return;
+                    }
+
                     if (!(upButton.isPressed() && downButton.isPressed())) {
                         // One or both buttons released → reset FSM
                         dualState = DualPressState::IDLE_WAIT;
                     } else {
+                        // 2. Normal Delay Toggle (Hold Both > 600ms)
                         if (!dualActionProcessed && millis() - bothButtonsTime >= Config::DELAY_HOLD_MS) {
                             stopDelayActive = !stopDelayActive;
                             dualActionProcessed = true;
@@ -428,6 +473,40 @@ void loop() {
                 break;
             }
             break;
+        }
+
+        case StateManager_remote::State::GAME: {
+             // Pause (Both buttons 600ms)
+             static unsigned long gameBothPressStart = 0;
+             if (upButton.isPressed() && downButton.isPressed()) {
+                 if (gameBothPressStart == 0) gameBothPressStart = millis();
+                 else if (millis() - gameBothPressStart > 600) {
+                     gamePaused = !gamePaused;
+                     gameBothPressStart = 0; // Reset to avoid rapid toggling
+                 }
+             } else {
+                 gameBothPressStart = 0;
+             }
+
+             if (!gamePaused && millis() - lastGameTick > GAME_TICK_MS) {
+                 snakeGame.update();
+                 lastGameTick = millis();
+                 if (snakeGame.isGameOver()) {
+                     uint16_t score = snakeGame.getScore();
+                     isNewHighScore = (score > snakeHighScore);
+                     if (isNewHighScore) {
+                         snakeHighScore = score;
+                         saveSnakeHighScore();
+                     }
+                     stateManager.switchToGameOver();
+                 }
+             }
+             break;
+        }
+
+        case StateManager_remote::State::GAME_OVER: {
+             // Button handling is done via callbacks
+             break;
         }
     }
 

@@ -28,6 +28,14 @@ void StateManager_remote::switchToMenu() {
     resetMenuActivityTimer();
 }
 
+void StateManager_remote::switchToGame() {
+    _currentState = State::GAME;
+}
+
+void StateManager_remote::switchToGameOver() {
+    _currentState = State::GAME_OVER;
+}
+
 int StateManager_remote::getTargetPercentage() const {
     return _targetPercentage;
 }

@@ -13,6 +13,21 @@ float loraBandwidth = 125.0;      // kHz (standard)
 
 // Remote-specific settings - default values
 unsigned long remoteStopDelayMs = 1000; // 1 second default delay
+uint16_t snakeHighScore = 0;
+
+void loadSnakeHighScore() {
+    if (!preferences.begin("riiwynch_remote", true)) return;
+    snakeHighScore = preferences.getUShort("snake_hi", 0);
+    preferences.end();
+    Serial.printf("🎮 [Remote] Loaded Snake high score: %d\n", snakeHighScore);
+}
+
+void saveSnakeHighScore() {
+    if (!preferences.begin("riiwynch_remote", false)) return;
+    preferences.putUShort("snake_hi", snakeHighScore);
+    preferences.end();
+    Serial.printf("💾 [Remote] Saved Snake high score: %d\n", snakeHighScore);
+}
 
 // Global Settings Functions (LoRa settings for remote)
 void loadGlobalLoRaSettings() {
