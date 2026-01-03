@@ -17,6 +17,9 @@
 #include <semphr.h>
 #include "Button.h"
 
+// Mutex for protecting shared display update state
+static SemaphoreHandle_t displayUpdateMutex = NULL;
+
 // Component instances
 DisplayManager display;
 Button upButton(7);
@@ -49,6 +52,12 @@ void handleDisplayUpdates(bool isStopped);
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Setup.");
+
+  // Initialize mutex for display update state protection
+  displayUpdateMutex = xSemaphoreCreateMutex();
+  if (displayUpdateMutex == NULL) {
+    Serial.println("Failed to create display update mutex!");
+  }
   
   // Initialize new buttons with callbacks
   upButton.onPress([&]() { 
@@ -204,18 +213,18 @@ void handleDisplayUpdates(bool isStopped) {
   static bool wasStopped = false;     // Track previous stopped state
   static bool lastModeActive = false; // Track mode display state
   static unsigned long lastModeUpdateTime = 0; // Track last mode update sent
-    static unsigned long lastLoRaTransmissionTime = 0; // Track last LoRa transmission time
+  static unsigned long lastLoRaTransmissionTime = 0; // Track last LoRa transmission time
   static const unsigned long MODE_UPDATE_INTERVAL = 2000; // Send mode every 2 seconds when not running
   static const unsigned long LORA_TRANSMISSION_THROTTLE = 250; // Minimum 250ms between LoRa transmissions
-  
-  // New: Delayed sending mechanism to reduce LoRa traffic during rapid changes
+
+  // Protected by displayUpdateMutex: Delayed sending mechanism to reduce LoRa traffic during rapid changes
   static int lastStableDisplayPct = -1; // Track last stable percentage value
   static unsigned long lastPercentageChangeTime = 0; // When percentage last changed
   static const unsigned long PERCENTAGE_STABILIZATION_DELAY = 300; // Wait 300ms after last change before sending
 
   // Check if mode display is currently active
   bool modeActive = display.isModeDisplayActive();
-  
+
   int dispPct = state.getDisplayedPercentage();
   const char* currentMode = profileManager.getCurrentModeName();
   bool isConnected = heartbeatManager.isRemoteConnected();
@@ -228,7 +237,7 @@ void handleDisplayUpdates(bool isStopped) {
       if (!modeActive && lastModeActive && !isStopped) {
           display.update(dispPct, loraManager.getCurrentRSSI(), currentMode, isConnected);
       }
-      
+
       // Regular percentage display logic
       if (state.needsDisplayUpdate() || wasStopped) {
           state.updateDisplayStep();
@@ -236,33 +245,49 @@ void handleDisplayUpdates(bool isStopped) {
       }
   }
 
-  // Track percentage changes for stabilization delay
-  if (dispPct != lastStableDisplayPct) {
-      lastStableDisplayPct = dispPct;
-      lastPercentageChangeTime = millis();
-      Serial.printf("[Main Loop] Percentage changed to %d%%, starting stabilization timer\n", dispPct);
-  }
-
-  // Handle LoRa transmission with stabilization delay
+  // === MUTEX-PROTECTED SECTION for percentage stabilization tracking ===
+  // This prevents race conditions between main loop and LoRa/heartbeat callbacks
   bool shouldSendNow = false;
-  bool percentageHasStabilized = (millis() - lastPercentageChangeTime >= PERCENTAGE_STABILIZATION_DELAY);
-  
-  // Check if we should send: percentage has stabilized, it's different from last sent, and throttle period has passed
-  if (dispPct != lastSentDisplayPct && percentageHasStabilized && 
-      (millis() - lastLoRaTransmissionTime >= LORA_TRANSMISSION_THROTTLE)) {
-      shouldSendNow = true;
+  int pctToSend = 0;
+
+  if (displayUpdateMutex != NULL && xSemaphoreTake(displayUpdateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      unsigned long currentTime = millis();
+
+      // Track percentage changes for stabilization delay
+      if (dispPct != lastStableDisplayPct) {
+          lastStableDisplayPct = dispPct;
+          lastPercentageChangeTime = currentTime;
+          Serial.printf("[Main Loop] Percentage changed to %d%%, starting stabilization timer\n", dispPct);
+      }
+
+      // Handle LoRa transmission with stabilization delay (rollover-safe comparison)
+      unsigned long timeSinceChange = currentTime - lastPercentageChangeTime;
+      bool percentageHasStabilized = (timeSinceChange >= PERCENTAGE_STABILIZATION_DELAY);
+
+      unsigned long timeSinceLastTx = currentTime - lastLoRaTransmissionTime;
+
+      // Check if we should send: percentage has stabilized, it's different from last sent, and throttle period has passed
+      if (dispPct != lastSentDisplayPct && percentageHasStabilized &&
+          (timeSinceLastTx >= LORA_TRANSMISSION_THROTTLE)) {
+          shouldSendNow = true;
+          pctToSend = dispPct;
+          lastSentDisplayPct = dispPct;
+          lastLoRaTransmissionTime = currentTime;
+      } else if (dispPct != lastSentDisplayPct && !percentageHasStabilized) {
+          // If we're waiting for stabilization, log it for debugging
+          unsigned long timeRemaining = PERCENTAGE_STABILIZATION_DELAY - timeSinceChange;
+          Serial.printf("[Main Loop] Waiting for stabilization: %d%% (remaining: %lu ms)\n",
+                        dispPct, timeRemaining);
+      }
+
+      xSemaphoreGive(displayUpdateMutex);
   }
-  
+  // === END MUTEX-PROTECTED SECTION ===
+
+  // Perform LoRa transmission outside of mutex to avoid holding lock during I/O
   if (shouldSendNow) {
-      Serial.printf("[Main Loop] Percentage stabilized at %d%%, syncing to remote\n", dispPct);
-      loraManager.sendDisplayPercentage(dispPct);
-      lastSentDisplayPct = dispPct;
-      lastLoRaTransmissionTime = millis();
-  } else if (dispPct != lastSentDisplayPct && !percentageHasStabilized) {
-      // If we're waiting for stabilization, log it for debugging
-      unsigned long timeRemaining = PERCENTAGE_STABILIZATION_DELAY - (millis() - lastPercentageChangeTime);
-      Serial.printf("[Main Loop] Waiting for stabilization: %d%% (remaining: %lu ms)\n", 
-                    dispPct, timeRemaining);
+      Serial.printf("[Main Loop] Percentage stabilized at %d%%, syncing to remote\n", pctToSend);
+      loraManager.sendDisplayPercentage(pctToSend);
   }
 
   // Send periodic mode updates when motor is not running to keep remote in sync

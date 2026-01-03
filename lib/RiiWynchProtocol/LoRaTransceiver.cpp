@@ -5,11 +5,12 @@
 LoRaTransceiver* LoRaTransceiver::instance = nullptr;
 
 LoRaTransceiver::LoRaTransceiver()
-    : mod(new Module(L_CS, L_DIO1, L_RST, L_BUSY, SPI)), 
+    : mod(new Module(L_CS, L_DIO1, L_RST, L_BUSY, SPI)),
       radio(mod),
       messageReady(false),
       lastRSSI(-999.0),  // Initialize with invalid RSSI value
-      lastRSSIUpdate(0) {
+      lastRSSIUpdate(0),
+      rssiIsStale(true) {  // Start as stale until first successful read
     instance = this;
 }
 
@@ -230,19 +231,33 @@ void LoRaTransceiver::updateRealTimeRSSI() {
     if (currentTime - lastRSSIUpdate < 100) { // Update at most every 100ms
         return;
     }
-    
-    // Try to get mutex with short timeout to avoid blocking message handling
-    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+
+    // Try to get mutex with reasonable timeout (increased from 5ms to 50ms)
+    // This gives better chance of success while still avoiding long blocks
+    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         // Read current RSSI - this works even when in receive mode
         float newRSSI = radio.getRSSI();
-        
+
         // Only update if we get a valid reading (not -999 or similar error values)
         if (newRSSI > -200.0 && newRSSI < 50.0) { // Reasonable RSSI range
             lastRSSI = newRSSI;
             lastRSSIUpdate = currentTime;
+            rssiIsStale = false; // Successfully updated
         }
-        
+
         xSemaphoreGive(loraMutex);
+    } else {
+        // Mutex acquisition failed - mark RSSI as potentially stale
+        // Check if data is too old
+        if (currentTime - lastRSSIUpdate > RSSI_STALE_THRESHOLD) {
+            rssiIsStale = true;
+            Serial.println("[Transceiver] RSSI data is stale (mutex timeout)");
+        }
     }
-    // If we can't get the mutex, just skip this update - don't block
+}
+
+bool LoRaTransceiver::isRSSIStale() {
+    // RSSI is stale if explicitly marked or if too much time has passed since last update
+    unsigned long elapsed = millis() - lastRSSIUpdate;
+    return rssiIsStale || (elapsed > RSSI_STALE_THRESHOLD);
 } 

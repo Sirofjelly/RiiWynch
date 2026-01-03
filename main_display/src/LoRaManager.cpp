@@ -10,9 +10,23 @@ extern ProfileManager& getGlobalProfileManager();
 LoRaManager::LoRaManager(StateManager& stateMgr, DisplayManager& displayMgr)
     : state(stateMgr), display(displayMgr), heartbeatManager(nullptr) {}
 
+LoRaManager::~LoRaManager() {
+    if (dspStateMutex != NULL) {
+        vSemaphoreDelete(dspStateMutex);
+        dspStateMutex = NULL;
+    }
+}
+
 bool LoRaManager::begin() {
+    // Create mutex for protecting DSP ACK/resend state
+    dspStateMutex = xSemaphoreCreateMutex();
+    if (dspStateMutex == NULL) {
+        Serial.println("[LoRa] Failed to create DSP state mutex!");
+        return false;
+    }
+
     // Use global LoRa settings from Settings.h
-    Serial.printf("[LoRa] Initializing with freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
+    Serial.printf("[LoRa] Initializing with freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n",
                   loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
     return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
 }
@@ -39,10 +53,22 @@ void LoRaManager::update() {
         handleMessage(msg);
     }
 
-    // Handle resend logic for display updates
-    if (waitingForDspAck && (millis() - lastDspSendTime > DSP_RESEND_INTERVAL)) {
-        Serial.printf("[LORA] Resending DSP: %d%%\n", lastSentDspPct);
-        sendDisplayPercentage(lastSentDspPct);
+    // Handle resend logic for display updates (mutex-protected to avoid race with ACK handling)
+    bool shouldResend = false;
+    uint8_t pctToResend = 0;
+
+    if (dspStateMutex != NULL && xSemaphoreTake(dspStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        if (waitingForDspAck && (millis() - lastDspSendTime > DSP_RESEND_INTERVAL)) {
+            shouldResend = true;
+            pctToResend = lastSentDspPct;
+        }
+        xSemaphoreGive(dspStateMutex);
+    }
+
+    // Perform resend outside mutex to avoid holding lock during I/O
+    if (shouldResend) {
+        Serial.printf("[LORA] Resending DSP: %d%%\n", pctToResend);
+        sendDisplayPercentage(pctToResend);
     }
 }
 
@@ -72,9 +98,13 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
             break;
 
         case RiiWynch::Protocol::MessageType::ACK_DSP:
-            if (waitingForDspAck && msg.payload.percentage == lastSentDspPct) {
-                Serial.printf("[LORA RX] ACK for DSP %d%% received.\n", msg.payload.percentage);
-                waitingForDspAck = false;
+            // Mutex-protected ACK handling to avoid race with resend logic
+            if (dspStateMutex != NULL && xSemaphoreTake(dspStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+                if (waitingForDspAck && msg.payload.percentage == lastSentDspPct) {
+                    Serial.printf("[LORA RX] ACK for DSP %d%% received.\n", msg.payload.percentage);
+                    waitingForDspAck = false;
+                }
+                xSemaphoreGive(dspStateMutex);
             }
             break;
 
@@ -116,9 +146,13 @@ void LoRaManager::sendDisplayPercentage(int percentage) {
 
     if (transceiver.transmit(msg)) {
         Serial.printf("[LORA TX] DSP: %d%%\n", percentage);
-        lastSentDspPct = percentage;
-        lastDspSendTime = millis();
-        waitingForDspAck = true;
+        // Mutex-protected state update to avoid race with ACK handling and resend logic
+        if (dspStateMutex != NULL && xSemaphoreTake(dspStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            lastSentDspPct = percentage;
+            lastDspSendTime = millis();
+            waitingForDspAck = true;
+            xSemaphoreGive(dspStateMutex);
+        }
     } else {
         Serial.printf("[LORA TX] Failed to send DSP: %d%%\n", percentage);
     }

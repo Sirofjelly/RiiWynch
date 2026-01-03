@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <FreeRTOS.h>
+#include <atomic>
 #include "LoRaManager_remote.h"
 #include "Button.h"
 #include "DisplayManager_remote.h"
@@ -70,8 +71,9 @@ unsigned long noButtonPressStartTime = 0;
 unsigned long lastKeepaliveTime = 0;
 bool stopDelayActive = false; // Flag for delayed stop functionality
 
-// 🔄 Mode tracking
-static uint8_t currentModeIdx = 0;
+// 🔄 Mode tracking - use atomic to protect against race conditions
+// between LoRa callback (write) and main loop (read)
+static std::atomic<uint8_t> currentModeIdx{0};
 static const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
 
 // ─── Remote Settings ───
@@ -124,11 +126,11 @@ void onLoraStopMotor() {
     stopDelayActive = false; // Reset delay flag when ride ends
 }
 
-// 🔄 MODE_UPDATE callback
+// 🔄 MODE_UPDATE callback - uses atomic store for thread safety
 void onLoraModeUpdate(uint8_t idx) {
     Serial.printf("[Remote] onLoraModeUpdate called with idx=%d\n", idx);
     if (idx < 4) {
-        currentModeIdx = idx;
+        currentModeIdx.store(idx, std::memory_order_release);
         Serial.printf("[Remote] Mode updated to %s (%d)\n", modeNames[idx], idx);
     } else {
         Serial.printf("[Remote] Invalid mode index received: %d\n", idx);
@@ -221,11 +223,14 @@ void heartbeatTask(void *parameter) {
 //              DISPLAY LOGIC
 // ─────────────────────────────────────────
 void drawForState() {
+    // Atomic load of mode index for thread safety with LoRa callback
+    uint8_t modeIdx = currentModeIdx.load(std::memory_order_acquire);
+
     switch(stateManager.getState()) {
         case StateManager_remote::State::IDLE:
         case StateManager_remote::State::ARMING:
         case StateManager_remote::State::CRUISING:
-             displayManager.drawStartScreen(stateManager.getShownPercentage(), loraManager.getCurrentRSSI(), readBattery(), stateManager.getState(), modeNames[currentModeIdx], stopDelayActive, remoteStopDelayMs);
+             displayManager.drawStartScreen(stateManager.getShownPercentage(), loraManager.getCurrentRSSI(), readBattery(), stateManager.getState(), modeNames[modeIdx], stopDelayActive, remoteStopDelayMs);
             break;
         case StateManager_remote::State::MENU:
             displayManager.drawMenuScreen(stateManager.getShownPercentage());

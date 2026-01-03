@@ -32,6 +32,7 @@ public:
     float getRSSI();
     float getCurrentRSSI();
     void updateRealTimeRSSI();
+    bool isRSSIStale(); // Returns true if RSSI data is stale (mutex timeout or old data)
 
 private:
     Module* mod;
@@ -40,6 +41,8 @@ private:
     volatile bool messageReady;
     float lastRSSI;
     unsigned long lastRSSIUpdate;
+    bool rssiIsStale; // True if RSSI couldn't be updated due to mutex timeout
+    static const unsigned long RSSI_STALE_THRESHOLD = 500; // ms - RSSI older than this is considered stale
     
     // Priority-based mutex acquisition
     bool acquireMutexWithPriority(MessagePriority priority, TickType_t maxWait);

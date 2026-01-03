@@ -29,7 +29,10 @@ private:
     unsigned long lastHeartbeatTime;
     bool remoteConnected;
     static const unsigned long HEARTBEAT_TIMEOUT = 2000; // ms
-    
+    static const unsigned long HEARTBEAT_HYSTERESIS = 200; // ms - extra time before declaring disconnected
+    static const uint8_t TIMEOUT_CONFIRM_COUNT = 2; // Require N consecutive timeout checks before emergency stop
+    uint8_t consecutiveTimeouts; // Counter for consecutive timeout detections
+
     // Emergency stop recovery state
     bool inEmergencyStop;
     unsigned long emergencyStopStartTime;
