@@ -81,6 +81,7 @@ void DisplayManager_remote::drawMenuScreen(int percentage) {
     
     u8g2.setFont(u8g2_font_logisoso38_tf);
     int w = u8g2.getStrWidth(txt);
+    u8g2.drawStr((128 - w) / 2, 51, txt);
     u8g2.sendBuffer();
 }
 
