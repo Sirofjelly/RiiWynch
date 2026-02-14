@@ -60,7 +60,11 @@ void updateStartup(bool startPressed, bool stopPressed, bool disconnectedLocalOv
       }
       if (startPressed && !startupInProgress) {
         if (manualMode) {
-          // In manual mode, only activate starter relay for the set time, do not move servo
+          // In manual mode, set idle throttle and start cranking immediately.
+          gasServo.write(gasIdleAngle);
+          digitalWrite(START_RELAY_PIN, LOW);
+          Serial.printf("[Startup] Manual start: gas idle=%d, starter ON for %lu ms\n",
+                        gasIdleAngle, starterRelayTime);
           stateStartTime = millis();
           startupInProgress = true;
           currentState = STARTER_ON;
@@ -87,6 +91,7 @@ void updateStartup(bool startPressed, bool stopPressed, bool disconnectedLocalOv
         digitalWrite(START_RELAY_PIN, HIGH);
         stateStartTime = millis();
         if (manualMode) {
+          Serial.println("[Startup] Manual start complete: starter OFF, entering MANUAL_CONTROL");
           currentState = MANUAL_CONTROL;
           startupInProgress = false;
           return;
