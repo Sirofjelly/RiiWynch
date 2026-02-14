@@ -7,6 +7,7 @@ LoRaTransceiver* LoRaTransceiver::instance = nullptr;
 LoRaTransceiver::LoRaTransceiver()
     : mod(new Module(L_CS, L_DIO1, L_RST, L_BUSY, SPI)),
       radio(mod),
+      loraMutex(NULL),
       messageReady(false),
       lastRSSI(-999.0),  // Initialize with invalid RSSI value
       lastRSSIUpdate(0),
@@ -15,7 +16,10 @@ LoRaTransceiver::LoRaTransceiver()
 }
 
 LoRaTransceiver::~LoRaTransceiver() {
-    vSemaphoreDelete(loraMutex);
+    if (loraMutex != NULL) {
+        vSemaphoreDelete(loraMutex);
+        loraMutex = NULL;
+    }
     delete mod;
 }
 
@@ -26,11 +30,13 @@ void IRAM_ATTR LoRaTransceiver::onReceive() {
 }
 
 bool LoRaTransceiver::begin(float freq, int power, int sf, int cr, float bw) {
-    // Create mutex with priority inheritance to prevent priority inversion
-    loraMutex = xSemaphoreCreateMutex();
+    // Create mutex once; begin() can be called repeatedly via restart().
     if (loraMutex == NULL) {
-        Serial.println("[Transceiver] Failed to create LoRa mutex!");
-        return false;
+        loraMutex = xSemaphoreCreateMutex();
+        if (loraMutex == NULL) {
+            Serial.println("[Transceiver] Failed to create LoRa mutex!");
+            return false;
+        }
     }
     
     // Enable LoRa power (VEXT)

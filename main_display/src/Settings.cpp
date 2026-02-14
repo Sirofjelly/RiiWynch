@@ -102,7 +102,7 @@ void loadSettingsForProfile(int profileIndex) {
         chokeAngle           = 55;
         brakeAngle           = 55;
         stopCooldownDuration = 3000;
-        manualMode           = false;
+        manualMode           = (profileIndex == 3);
         
         // Save these defaults to this profile's section
         saveSettingsForProfile(profileIndex);
@@ -129,7 +129,8 @@ void loadSettingsForProfile(int profileIndex) {
     chokeAngle           = preferences.getInt(String(baseKey + "choke").c_str(), 55);
     brakeAngle           = preferences.getInt(String(baseKey + "brake").c_str(), 55);
     stopCooldownDuration = preferences.getULong(String(baseKey + "cooldown").c_str(), 3000);
-    manualMode           = preferences.getBool(String(baseKey + "manual").c_str(), false);
+    // Manual mode is selected by profile index, not by persisted profile payload.
+    manualMode           = (profileIndex == 3);
     
     Serial.printf("✅ Loaded profile %d from preferences\n", profileIndex + 1);
     Serial.printf("  Starter Relay Time: %lu ms (was %lu)\n", starterRelayTime, oldStarterTime);
@@ -169,7 +170,8 @@ void saveSettingsForProfile(int profileIndex) {
     ok &= preferences.putInt(String(baseKey + "choke").c_str(), chokeAngle);
     ok &= preferences.putInt(String(baseKey + "brake").c_str(), brakeAngle);
     ok &= preferences.putULong(String(baseKey + "cooldown").c_str(), stopCooldownDuration);
-    ok &= preferences.putBool(String(baseKey + "manual").c_str(), manualMode);
+    // Persist a deterministic value for backward compatibility with existing keys.
+    ok &= preferences.putBool(String(baseKey + "manual").c_str(), profileIndex == 3);
 
     preferences.end();
 

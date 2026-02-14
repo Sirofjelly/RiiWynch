@@ -28,9 +28,6 @@ void ProfileManager::begin() {
 void ProfileManager::update() {
     // Update mode display (non-blocking timeout handling)
     display.updateModeDisplay();
-    
-    // Always update button states regardless of mode
-    checkModeSwitch(false);
 }
 
 void ProfileManager::checkModeSwitch(bool stopPressed) {
