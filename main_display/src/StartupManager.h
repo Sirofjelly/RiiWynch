@@ -1,7 +1,7 @@
 #pragma once
 
 void setupStartup();
-void updateStartup(bool startPressed, bool stopPressed);
+void updateStartup(bool startPressed, bool stopPressed, bool disconnectedLocalOverrideActive);
 
 extern unsigned long starterRelayTime;
 extern int stage1SpeedPercentage;

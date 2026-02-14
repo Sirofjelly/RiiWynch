@@ -184,7 +184,16 @@ void loop() {
                state.getState() == StateManager::State::STOPPED);
   updateServos(chokePressed, brakePressed);
 
-  updateStartup(startRequested, localStopPressed || remoteStopRequested);  
+  bool disconnectedLocalOverrideActive = !heartbeatManager.isRemoteConnected() &&
+                                         state.getState() == StateManager::State::RUNNING;
+  static bool lastDisconnectedLocalOverrideActive = false;
+  if (disconnectedLocalOverrideActive != lastDisconnectedLocalOverrideActive) {
+    Serial.printf("[Main] Local disconnect speed override %s\n",
+                  disconnectedLocalOverrideActive ? "active" : "inactive");
+    lastDisconnectedLocalOverrideActive = disconnectedLocalOverrideActive;
+  }
+
+  updateStartup(startRequested, localStopPressed || remoteStopRequested, disconnectedLocalOverrideActive);  
 
   handleWebUI();
 
@@ -200,8 +209,10 @@ void loop() {
 
   // Servo control in manual mode
   if (currentState == MANUAL_CONTROL) {
-    // Only adjust gas servo if remote is connected or if stopping
-    if (heartbeatManager.isRemoteConnected() || state.getTargetPercentage() == 0) { 
+    // Allow local speed control even when remote is disconnected while the system is running.
+    if (heartbeatManager.isRemoteConnected() ||
+        state.getTargetPercentage() == 0 ||
+        disconnectedLocalOverrideActive) { 
         gasServo.write(calculateTargetAngle());
     }
   }

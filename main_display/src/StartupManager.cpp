@@ -38,7 +38,7 @@ void setupStartup() {
   startupInProgress = false;
 }
 
-void updateStartup(bool startPressed, bool stopPressed) {
+void updateStartup(bool startPressed, bool stopPressed, bool disconnectedLocalOverrideActive) {
   if (stopPressed || isStopRelayInCooldown()) {
     startupInProgress = false;
     currentState = IDLE;
@@ -134,6 +134,22 @@ void updateStartup(bool startPressed, bool stopPressed) {
     case RAMP_STAGE_3: {
       if (manualMode) break;
       float progress = float(millis() - stateStartTime) / stage3Duration;
+
+      if (disconnectedLocalOverrideActive) {
+        int requestedTargetAngle = calculateTargetAngle();
+        if (requestedTargetAngle != rampTargetAngle) {
+          int currentAngle = (progress >= 1.0f)
+            ? rampTargetAngle
+            : (rampStartAngle + progress * (rampTargetAngle - rampStartAngle));
+          Serial.printf("[Startup] Stage 3 retarget while remote disconnected: %d -> %d\n",
+                        rampTargetAngle, requestedTargetAngle);
+          rampStartAngle = currentAngle;
+          rampTargetAngle = requestedTargetAngle;
+          stateStartTime = millis();
+          progress = 0.0f;
+        }
+      }
+
       if (progress >= 1.0f) {
         gasServo.write(rampTargetAngle);
         currentState = MANUAL_CONTROL;
