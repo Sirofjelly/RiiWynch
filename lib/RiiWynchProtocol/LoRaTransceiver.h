@@ -44,6 +44,12 @@ private:
     bool rssiIsStale; // True if RSSI couldn't be updated due to mutex timeout
     static const unsigned long RSSI_STALE_THRESHOLD = 500; // ms - RSSI older than this is considered stale
     
+    // TX failure watchdog
+    uint8_t _consecutiveTxFailures = 0;
+    static const uint8_t TX_WATCHDOG_WARN = 3;   // Warn after this many consecutive TX failures
+    static const uint8_t TX_WATCHDOG_CRIT = 10;  // Critical alert after this many consecutive TX failures
+    void reportTxFailure(); // Increment watchdog counter and emit warn/critical log
+
     // Priority-based mutex acquisition
     bool acquireMutexWithPriority(MessagePriority priority, TickType_t maxWait);
     TickType_t getTimeoutForPriority(MessagePriority priority);

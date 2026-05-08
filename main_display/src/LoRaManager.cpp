@@ -28,7 +28,11 @@ bool LoRaManager::begin() {
     // Use global LoRa settings from Settings.h
     Serial.printf("[LoRa] Initializing with freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n",
                   loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
-    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    bool ok = transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    if (!ok) {
+        Serial.println("[LoRa] Init failed — check hardware connections and LoRa config values");
+    }
+    return ok;
 }
 
 bool LoRaManager::restart() {
@@ -36,7 +40,11 @@ bool LoRaManager::restart() {
     // Use updated global LoRa settings
     Serial.printf("[LoRa] New settings: freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
                   loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
-    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    bool ok = transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    if (!ok) {
+        Serial.println("[LoRa] Restart failed — LoRa hardware may be unresponsive or settings are invalid");
+    }
+    return ok;
 }
 
 void LoRaManager::setHeartbeatManager(HeartbeatManager* hbMgr) {

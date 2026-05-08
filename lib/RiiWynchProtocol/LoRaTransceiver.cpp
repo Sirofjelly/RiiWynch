@@ -39,6 +39,24 @@ bool LoRaTransceiver::begin(float freq, int power, int sf, int cr, float bw) {
         }
     }
     
+    // Validate configuration parameters before attempting hardware init
+    if (freq < 137.0f || freq > 1020.0f) {
+        Serial.printf("[Transceiver] Bad config: frequency %.1f MHz out of range (137-1020 MHz)\n", freq);
+        return false;
+    }
+    if (power < 2 || power > 22) {
+        Serial.printf("[Transceiver] Bad config: power %d dBm out of range (2-22 dBm)\n", power);
+        return false;
+    }
+    if (sf < 6 || sf > 12) {
+        Serial.printf("[Transceiver] Bad config: spreading factor %d out of range (6-12)\n", sf);
+        return false;
+    }
+    if (cr < 5 || cr > 8) {
+        Serial.printf("[Transceiver] Bad config: coding rate %d out of range (5-8)\n", cr);
+        return false;
+    }
+
     // Enable LoRa power (VEXT)
     pinMode(VEXT, OUTPUT);
     digitalWrite(VEXT, LOW); // Enable LoRa power
@@ -134,6 +152,17 @@ bool LoRaTransceiver::transmit(const RiiWynch::Protocol::Message& msg) {
     return transmitWithPriority(msg, priority);
 }
 
+void LoRaTransceiver::reportTxFailure() {
+    _consecutiveTxFailures++;
+    if (_consecutiveTxFailures == TX_WATCHDOG_WARN) {
+        Serial.printf("[Transceiver] WARNING: %d consecutive TX failures — possible LoRa disconnect or interference\n",
+                      _consecutiveTxFailures);
+    } else if (_consecutiveTxFailures >= TX_WATCHDOG_CRIT) {
+        Serial.printf("[Transceiver] CRITICAL: %d consecutive TX failures — LoRa hardware may be unresponsive\n",
+                      _consecutiveTxFailures);
+    }
+}
+
 bool LoRaTransceiver::transmitWithPriority(const RiiWynch::Protocol::Message& msg, MessagePriority priority) {
     TickType_t timeout = getTimeoutForPriority(priority);
     
@@ -146,6 +175,8 @@ bool LoRaTransceiver::transmitWithPriority(const RiiWynch::Protocol::Message& ms
         Serial.printf("[Transceiver TX] Failed to get mutex for priority %d message (type %d) after %dms\n", 
                      static_cast<int>(priority), static_cast<int>(msg.type), pdTICKS_TO_MS(timeout));
         
+        reportTxFailure();
+
         // For critical messages, this is a severe error that needs attention
         if (priority == MessagePriority::CRITICAL_PRIORITY) {
             Serial.println("[Transceiver TX] !!! CRITICAL MESSAGE FAILED - SAFETY COMPROMISED !!!");
@@ -166,8 +197,10 @@ bool LoRaTransceiver::transmitWithPriority(const RiiWynch::Protocol::Message& ms
         
         if (txResult != RADIOLIB_ERR_NONE) {
             Serial.printf("[Transceiver TX] Error: %d\n", txResult);
+            reportTxFailure();
         } else {
             result = true;
+            _consecutiveTxFailures = 0; // Reset watchdog on successful transmit
             if (priority == MessagePriority::CRITICAL_PRIORITY) {
                 Serial.printf("[Transceiver] CRITICAL message type %d sent successfully\n", 
                              static_cast<int>(msg.type));
