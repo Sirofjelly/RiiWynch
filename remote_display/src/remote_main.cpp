@@ -512,6 +512,22 @@ void loop() {
 
     stateManager.updateShownPercentage(Config::SMOOTH_STEP, Config::SMOOTH_UPDATE_MS);
 
+    // Periodic low-battery watchdog
+    static unsigned long lastBatWatchdog = 0;
+    static const unsigned long BAT_WATCHDOG_INTERVAL_MS = 15000; // Check every 15 s
+    static const uint16_t BATTERY_WARN_MV = 3500;               // 3.5 V warning threshold
+    static const uint16_t BATTERY_CRIT_MV = 3300;               // 3.3 V critical threshold
+    unsigned long currentMs = millis();
+    if (currentMs - lastBatWatchdog >= BAT_WATCHDOG_INTERVAL_MS) {
+        uint16_t batMv = readBattery();
+        if (batMv > 0 && batMv < BATTERY_CRIT_MV) {
+            Serial.printf("[Battery] CRITICAL: %.2fV — charge immediately!\n", batMv / 1000.0f);
+        } else if (batMv > 0 && batMv < BATTERY_WARN_MV) {
+            Serial.printf("[Battery] WARNING: Low battery %.2fV\n", batMv / 1000.0f);
+        }
+        lastBatWatchdog = currentMs;
+    }
+
     // Centralized display update
     if (millis() - lastDisplayUpdate >= Config::START_UPDATE_MS) {
         drawForState();

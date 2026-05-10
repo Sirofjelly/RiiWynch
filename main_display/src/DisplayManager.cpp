@@ -126,8 +126,8 @@ void DisplayManager::drawStopScreen(int percentage, float rssi, const char* mode
   u8g2.clearBuffer();
   RiiWynch::UI::drawFrame(u8g2);
 
-  // Title (large)
-  const char* title = "STOP";
+  // Title: distinguish between a deliberate local stop and a remote disconnect
+  const char* title = isConnected ? "STOP" : "NO LINK";
   u8g2.setFont(u8g2_font_logisoso28_tf);
   int16_t titleWidth = u8g2.getStrWidth(title);
   u8g2.drawStr((128 - titleWidth) / 2, 46, title);

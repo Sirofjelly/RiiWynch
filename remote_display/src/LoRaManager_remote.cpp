@@ -8,7 +8,11 @@ bool LoRaManager_remote::begin() {
     // Use global LoRa settings from Settings_remote.h
     Serial.printf("[LoRa Remote] Initializing with freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
                   loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
-    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    bool ok = transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    if (!ok) {
+        Serial.println("[LoRa Remote] Init failed — check hardware connections and LoRa config values");
+    }
+    return ok;
 }
 
 bool LoRaManager_remote::restart() {
@@ -16,7 +20,11 @@ bool LoRaManager_remote::restart() {
     // Use updated global LoRa settings
     Serial.printf("[LoRa Remote] New settings: freq=%.1f MHz, power=%d dBm, SF=%d, CR=%d, BW=%.1f kHz\n", 
                   loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
-    return transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    bool ok = transceiver.begin(loraFrequency, loraPower, loraSpreadingFactor, loraCodingRate, loraBandwidth);
+    if (!ok) {
+        Serial.println("[LoRa Remote] Restart failed — LoRa hardware may be unresponsive or settings are invalid");
+    }
+    return ok;
 }
 
 void LoRaManager_remote::onDisplayUpdate(void (*callback)(int percentage, float rssi)) {

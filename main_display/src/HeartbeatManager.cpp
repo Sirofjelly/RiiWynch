@@ -124,11 +124,11 @@ void HeartbeatManager::checkTimeout() {
 }
 
 void HeartbeatManager::executeEmergencyStop() {
+    unsigned long elapsed = millis() - lastHeartbeatTime;
+    Serial.printf("[HBT Monitor] DISCONNECT: last heartbeat %lu ms ago — triggering emergency stop\n", elapsed);
+
     // Key safety action - stop the system immediately using timeout mechanism
     state.stopWithTimeout(RECOVERY_TIMEOUT); // Use timeout instead of direct setState
-    
-    // Update display to show connection lost
-    display.updateText("Lost");
     
     // Update connection status and emergency stop tracking
     remoteConnected = false;
