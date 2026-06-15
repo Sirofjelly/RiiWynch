@@ -25,7 +25,11 @@ void decPctSingle();
 void onLoraSettingsReceived();
 void onLoraRemoteSettingsReceived();
 void onLoraStopMotor();
+void onLoraStartAccepted();
 void onLoraModeUpdate(uint8_t idx);
+void requestStopMotor(const char* reason);
+void processStopBurst();
+void resetStartAcceptanceWait();
 
 // Game Globals
 SnakeGame snakeGame;
@@ -50,6 +54,10 @@ namespace Config {
     // New constants for dead man's switch logic
     static const unsigned long ARMING_DURATION_MS = 1000;
     static const unsigned long KEEPALIVE_INTERVAL_MS = 500;
+    static const unsigned long START_RETRY_INTERVAL_MS = 300;
+    static const uint8_t START_MAX_ATTEMPTS = 5;
+    static const unsigned long STOP_BURST_INTERVAL_MS = 200;
+    static const uint8_t STOP_BURST_COUNT = 5;
     // NO_BUTTON_TIMEOUT_MS moved to global variable remoteStopDelayMs
     static const unsigned long HEARTBEAT_INTERVAL_MS = 500;
     // Dual-button gesture timings
@@ -79,6 +87,12 @@ unsigned long armingStartTime = 0;
 unsigned long noButtonPressStartTime = 0;
 unsigned long lastKeepaliveTime = 0;
 bool stopDelayActive = false; // Flag for delayed stop functionality
+bool waitingForStartAcceptance = false;
+uint8_t startSendAttempts = 0;
+unsigned long lastStartSendTime = 0;
+bool stopBurstActive = false;
+uint8_t stopBurstRemaining = 0;
+unsigned long lastStopBurstSendTime = 0;
 
 // 🔄 Mode tracking - use atomic to protect against race conditions
 // between LoRa callback (write) and main loop (read)
@@ -133,6 +147,21 @@ void onLoraStopMotor() {
     Serial.println("[Remote] STOP_MOTOR received – switching to IDLE");
     stateManager.switchToIdle();
     stopDelayActive = false; // Reset delay flag when ride ends
+    resetStartAcceptanceWait();
+    stopBurstActive = false;
+}
+
+void onLoraStartAccepted() {
+    if (stateManager.getState() == StateManager_remote::State::ARMING && waitingForStartAcceptance) {
+        Serial.println("[Remote] Start accepted by Main → CRUISING");
+        resetStartAcceptanceWait();
+        stateManager.switchToCruising();
+        lastKeepaliveTime = 0; // Send ride supervision immediately
+        noButtonPressStartTime = 0;
+    } else {
+        Serial.println("[Remote] Late/unexpected start acceptance ignored; sending STOP burst");
+        requestStopMotor("late start acceptance");
+    }
 }
 
 // 🔄 MODE_UPDATE callback - uses atomic store for thread safety
@@ -237,6 +266,36 @@ void heartbeatTask(void *parameter) {
     }
 }
 
+void resetStartAcceptanceWait() {
+    waitingForStartAcceptance = false;
+    startSendAttempts = 0;
+    lastStartSendTime = 0;
+}
+
+void requestStopMotor(const char* reason) {
+    Serial.printf("[Remote] STOP burst requested: %s\n", reason);
+    loraManager.sendStopMotor();
+    stopBurstActive = true;
+    stopBurstRemaining = Config::STOP_BURST_COUNT - 1;
+    lastStopBurstSendTime = millis();
+}
+
+void processStopBurst() {
+    if (!stopBurstActive) return;
+
+    if (stopBurstRemaining == 0) {
+        stopBurstActive = false;
+        return;
+    }
+
+    if (millis() - lastStopBurstSendTime >= Config::STOP_BURST_INTERVAL_MS) {
+        loraManager.sendStopMotor();
+        stopBurstRemaining--;
+        lastStopBurstSendTime = millis();
+        Serial.printf("[Remote] STOP burst repeat sent, remaining=%u\n", stopBurstRemaining);
+    }
+}
+
 // ─────────────────────────────────────────
 //              DISPLAY LOGIC
 // ─────────────────────────────────────────
@@ -317,6 +376,7 @@ void setup() {
     loraManager.onLoRaSettingsReceived(onLoraSettingsReceived);
     loraManager.onRemoteSettingsReceived(onLoraRemoteSettingsReceived);
     loraManager.onStopMotor(onLoraStopMotor);
+    loraManager.onStartAccepted(onLoraStartAccepted);
     loraManager.onModeUpdate(onLoraModeUpdate);
 
     // --- Button Callbacks ---
@@ -340,8 +400,9 @@ void loop() {
     upButton.update();
     downButton.update();
 
-    // Update real-time RSSI monitoring
+    // Update RSSI staleness and reliable stop retransmission
     loraManager.updateRealTimeRSSI();
+    processStopBurst();
 
     bool anyButtonPressed = upButton.isPressed() || downButton.isPressed();
 
@@ -364,6 +425,7 @@ void loop() {
                     } else if (millis() - firstButtonTime > Config::DUAL_PRESS_WINDOW_MS) {
                         // Treated as single-button press → enter ARMING
                         dualState = DualPressState::IDLE_WAIT;
+                        resetStartAcceptanceWait();
                         stateManager.switchToArming();
                         armingStartTime = millis();
                         Serial.println("IDLE → ARMING (single button confirmed)");
@@ -413,30 +475,45 @@ void loop() {
 
         case StateManager_remote::State::ARMING: {
             if (!anyButtonPressed) {
+                if (waitingForStartAcceptance) {
+                    requestStopMotor("arming released while waiting for start acceptance");
+                }
+                resetStartAcceptanceWait();
                 stateManager.switchToIdle();
                 Serial.println("ARMING → IDLE");
                 break;
             }
             
             if (millis() - armingStartTime >= Config::ARMING_DURATION_MS) {
-                Serial.println("ARMING → CRUISING (START_MOTOR sent)");
-                loraManager.sendStartMotor();
-                stateManager.switchToCruising();
-                lastKeepaliveTime = millis(); // Send first keepalive immediately
-                noButtonPressStartTime = 0; // Reset this timer
+                waitingForStartAcceptance = true;
+
+                if (startSendAttempts < Config::START_MAX_ATTEMPTS &&
+                    (startSendAttempts == 0 || millis() - lastStartSendTime >= Config::START_RETRY_INTERVAL_MS)) {
+                    startSendAttempts++;
+                    lastStartSendTime = millis();
+                    Serial.printf("ARMING: START_MOTOR attempt %u/%u\n", startSendAttempts, Config::START_MAX_ATTEMPTS);
+                    loraManager.sendStartMotor();
+                } else if (startSendAttempts >= Config::START_MAX_ATTEMPTS &&
+                           millis() - lastStartSendTime >= Config::START_RETRY_INTERVAL_MS) {
+                    Serial.println("ARMING → IDLE (START FAILED: no acceptance)");
+                    requestStopMotor("start acceptance timeout");
+                    resetStartAcceptanceWait();
+                    stateManager.switchToIdle();
+                }
             }
             break;
         }
 
         case StateManager_remote::State::CRUISING: {
+            bool rideSupervisionActive = anyButtonPressed || stopDelayActive;
+            if (rideSupervisionActive && millis() - lastKeepaliveTime >= Config::KEEPALIVE_INTERVAL_MS) {
+                loraManager.sendKeepalive();
+                lastKeepaliveTime = millis();
+                Serial.println("KEEPALIVE sent");
+            }
+
             if (anyButtonPressed) {
                 noButtonPressStartTime = 0; // Reset timer because a button is pressed
-
-                if (millis() - lastKeepaliveTime >= Config::KEEPALIVE_INTERVAL_MS) {
-                    loraManager.sendKeepalive();
-                    lastKeepaliveTime = millis();
-                    Serial.println("KEEPALIVE sent");
-                }
             } else { // No buttons are pressed
                 if (stopDelayActive) {
                     // Use delay logic when delay is active
@@ -445,15 +522,15 @@ void loop() {
                         noButtonPressStartTime = millis();
                         Serial.println("No button press timer started (with delay)...");
                     } else if (millis() - noButtonPressStartTime >= remoteStopDelayMs) {
-                        Serial.println("CRUISING → IDLE (STOP_MOTOR sent after delay)");
-                        loraManager.sendStopMotor();
+                        Serial.println("CRUISING → IDLE (STOP_MOTOR burst after delay)");
+                        requestStopMotor("remote stop delay elapsed");
                         stateManager.switchToIdle();
                         stopDelayActive = false; // Reset delay flag when ride ends
                     }
                 } else {
                     // Immediate stop when delay is not active
-                    Serial.println("CRUISING → IDLE (STOP_MOTOR sent immediately)");
-                    loraManager.sendStopMotor();
+                    Serial.println("CRUISING → IDLE (STOP_MOTOR burst immediately)");
+                    requestStopMotor("buttons released without delay");
                     stateManager.switchToIdle();
                 }
             }

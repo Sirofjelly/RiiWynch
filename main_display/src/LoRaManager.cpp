@@ -78,6 +78,11 @@ void LoRaManager::update() {
         Serial.printf("[LORA] Resending DSP: %d%%\n", pctToResend);
         sendDisplayPercentage(pctToResend);
     }
+
+    if (waitingForRemoteSettingsAck && (millis() - lastRemoteSettingsSendTime > REMOTE_SETTINGS_RESEND_INTERVAL)) {
+        Serial.printf("[LORA] Resending remote settings: stopDelayMs=%lu ms\n", lastRemoteSettingsValue);
+        sendRemoteSettings();
+    }
 }
 
 void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
@@ -113,6 +118,16 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
                     waitingForDspAck = false;
                 }
                 xSemaphoreGive(dspStateMutex);
+            }
+            break;
+
+        case RiiWynch::Protocol::MessageType::ACK_REMOTE_SETTINGS:
+            if (waitingForRemoteSettingsAck && msg.payload.remoteSettings.stopDelayMs == lastRemoteSettingsValue) {
+                Serial.printf("[LORA RX] ACK_REMOTE_SETTINGS received: %lu ms\n", msg.payload.remoteSettings.stopDelayMs);
+                waitingForRemoteSettingsAck = false;
+            } else {
+                Serial.printf("[LORA RX] Ignored stale ACK_REMOTE_SETTINGS: %lu ms (expected %lu ms)\n",
+                              msg.payload.remoteSettings.stopDelayMs, lastRemoteSettingsValue);
             }
             break;
 
@@ -198,8 +213,24 @@ void LoRaManager::sendRemoteSettings() {
 
     if (transceiver.transmit(msg)) {
         Serial.printf("[LORA TX] Remote settings sent: stopDelayMs=%lu ms\n", remoteStopDelayMs);
+        lastRemoteSettingsValue = remoteStopDelayMs;
+        lastRemoteSettingsSendTime = millis();
+        waitingForRemoteSettingsAck = true;
     } else {
         Serial.println("[LORA TX] Failed to send remote settings");
+    }
+}
+
+void LoRaManager::sendStartAccepted() {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::ACK_START_MOTOR;
+    msg.source = RiiWynch::Protocol::DeviceID::MAIN_DISPLAY;
+    msg.packetCounter = packetCounter++;
+
+    if (transceiver.transmitWithPriority(msg, MessagePriority::HIGH_PRIORITY)) {
+        Serial.println("[LORA TX] ACK_START_MOTOR");
+    } else {
+        Serial.println("[LORA TX] Failed to send ACK_START_MOTOR");
     }
 }
 

@@ -17,7 +17,9 @@ enum class MessageType : uint8_t {
     KEEPALIVE,
     LORA_SETTINGS,
     REMOTE_SETTINGS,
-    MODE_UPDATE
+    MODE_UPDATE,
+    ACK_START_MOTOR,
+    ACK_REMOTE_SETTINGS
 };
 
 enum class DeviceID : uint8_t {

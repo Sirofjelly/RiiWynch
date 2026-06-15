@@ -47,6 +47,10 @@ void LoRaManager_remote::onStopMotor(void (*callback)()) {
     _stopMotorCallback = callback;
 }
 
+void LoRaManager_remote::onStartAccepted(void (*callback)()) {
+    _startAcceptedCallback = callback;
+}
+
 void LoRaManager_remote::onModeUpdate(void (*callback)(uint8_t modeIdx)) {
     _modeUpdateCallback = callback;
 }
@@ -74,7 +78,7 @@ void LoRaManager_remote::handleMessage(const RiiWynch::Protocol::Message& msg) {
             Serial.printf("[LORA RX] DSP: %d%%\n", msg.payload.percentage);
             sendAck(RiiWynch::Protocol::MessageType::ACK_DSP, msg.payload.percentage);
             if (_displayUpdateCallback) {
-                _displayUpdateCallback(msg.payload.percentage, transceiver.getRSSI());
+                _displayUpdateCallback(msg.payload.percentage, transceiver.getCurrentRSSI());
             }
             break;
 
@@ -108,9 +112,17 @@ void LoRaManager_remote::handleMessage(const RiiWynch::Protocol::Message& msg) {
             Serial.println("[LORA RX] Remote settings received from main");
             // Apply the received remote settings
             applyReceivedRemoteSettings(msg.payload.remoteSettings.stopDelayMs);
+            sendRemoteSettingsAck(msg.payload.remoteSettings.stopDelayMs);
             // Notify callback that settings were received and applied
             if (_remoteSettingsReceivedCallback) {
                 _remoteSettingsReceivedCallback();
+            }
+            break;
+
+        case RiiWynch::Protocol::MessageType::ACK_START_MOTOR:
+            Serial.println("[LORA RX] START accepted by main");
+            if (_startAcceptedCallback) {
+                _startAcceptedCallback();
             }
             break;
 
@@ -208,6 +220,20 @@ void LoRaManager_remote::sendAck(RiiWynch::Protocol::MessageType type, uint8_t p
     msg.packetCounter = packetCounter++;
     msg.payload.percentage = percentage;
     transceiver.transmit(msg);
+}
+
+void LoRaManager_remote::sendRemoteSettingsAck(unsigned long stopDelayMs) {
+    RiiWynch::Protocol::Message msg;
+    msg.type = RiiWynch::Protocol::MessageType::ACK_REMOTE_SETTINGS;
+    msg.source = RiiWynch::Protocol::DeviceID::REMOTE;
+    msg.packetCounter = packetCounter++;
+    msg.payload.remoteSettings.stopDelayMs = stopDelayMs;
+
+    if (transceiver.transmit(msg)) {
+        Serial.printf("[LORA TX] ACK_REMOTE_SETTINGS: %lu ms\n", stopDelayMs);
+    } else {
+        Serial.println("[LORA TX] Failed to send ACK_REMOTE_SETTINGS");
+    }
 }
 
 float LoRaManager_remote::getCurrentRSSI() {

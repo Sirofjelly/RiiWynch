@@ -18,8 +18,8 @@ public:
     void sendStopMotor();
     void sendKeepalive();
     
-    float getCurrentRSSI(); // New: Get real-time RSSI
-    void updateRealTimeRSSI(); // New: Update real-time RSSI reading
+    float getCurrentRSSI(); // RSSI from last valid Main Unit packet
+    void updateRealTimeRSSI(); // Marks RSSI stale when no packet arrived recently
     
     // Callback functions to link with main application logic
     void onDisplayUpdate(void (*callback)(int percentage, float rssi));
@@ -27,11 +27,13 @@ public:
     void onLoRaSettingsReceived(void (*callback)()); // Callback when LoRa settings are received and applied
     void onRemoteSettingsReceived(void (*callback)()); // Callback when remote settings are received and applied
     void onStopMotor(void (*callback)());
+    void onStartAccepted(void (*callback)());
     void onModeUpdate(void (*callback)(uint8_t modeIdx)); // 🔄 New: mode update callback
 
 private:
     void handleMessage(const RiiWynch::Protocol::Message& msg);
     void sendAck(RiiWynch::Protocol::MessageType type, uint8_t percentage);
+    void sendRemoteSettingsAck(unsigned long stopDelayMs);
 
     LoRaTransceiver transceiver;
     uint16_t packetCounter = 0;
@@ -42,6 +44,7 @@ private:
     void (*_loraSettingsReceivedCallback)() = nullptr;
     void (*_remoteSettingsReceivedCallback)() = nullptr;
     void (*_stopMotorCallback)() = nullptr;
+    void (*_startAcceptedCallback)() = nullptr;
     void (*_modeUpdateCallback)(uint8_t) = nullptr; // 🔄
     
     // State for resending VAL messages

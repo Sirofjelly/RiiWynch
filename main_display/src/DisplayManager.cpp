@@ -29,10 +29,14 @@ void DisplayManager::update(int percentage, float rssi, const char* mode, bool i
   // Mode name (small) on the left - replaces percentage
   u8g2.drawStr(6, 13, mode);
 
-  // RSSI (small) on the right side
+  // RSSI from last valid Remote packet
   if (isConnected) {
     char rssiBuf[10];
-    snprintf(rssiBuf, sizeof(rssiBuf), "%.0fdBm", rssi);
+    if (rssi <= -900.0f) {
+      snprintf(rssiBuf, sizeof(rssiBuf), "NO RSSI");
+    } else {
+      snprintf(rssiBuf, sizeof(rssiBuf), "%.0fdBm", rssi);
+    }
     int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
     u8g2.drawStr(128 - rssiWidth - 6, 13, rssiBuf);
   } else {
@@ -138,10 +142,14 @@ void DisplayManager::drawStopScreen(int percentage, float rssi, const char* mode
   // Mode name small left - replaces percentage
   u8g2.drawStr(6, 13, mode);
 
-  // RSSI on the right side
+  // RSSI from last valid Remote packet
   if (isConnected) {
     char rssiBuf[10];
-    sprintf(rssiBuf, "%.0fdBm", rssi);
+    if (rssi <= -900.0f) {
+      snprintf(rssiBuf, sizeof(rssiBuf), "NO RSSI");
+    } else {
+      snprintf(rssiBuf, sizeof(rssiBuf), "%.0fdBm", rssi);
+    }
     int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
     u8g2.drawStr(128 - rssiWidth - 6, 13, rssiBuf);
   } else {

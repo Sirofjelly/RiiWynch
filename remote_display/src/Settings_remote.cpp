@@ -129,6 +129,11 @@ void applyReceivedLoRaSettings(float freq, int power, int sf, int cr, float bw) 
 
 void applyReceivedRemoteSettings(unsigned long stopDelayMs) {
     Serial.printf("📡 [Remote] Received remote settings from main: stopDelayMs=%lu ms\n", stopDelayMs);
+
+    if (remoteStopDelayMs == stopDelayMs) {
+        Serial.println("✅ [Remote] Remote settings already current");
+        return;
+    }
     
     // Update global variable
     remoteStopDelayMs = stopDelayMs;

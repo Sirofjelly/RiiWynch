@@ -93,6 +93,8 @@ MessagePriority LoRaTransceiver::getMessagePriority(const RiiWynch::Protocol::Me
         case RiiWynch::Protocol::MessageType::ACK_VAL:
         case RiiWynch::Protocol::MessageType::ACK_DSP:
         case RiiWynch::Protocol::MessageType::MODE_UPDATE:
+        case RiiWynch::Protocol::MessageType::ACK_START_MOTOR:
+        case RiiWynch::Protocol::MessageType::ACK_REMOTE_SETTINGS:
             return MessagePriority::HIGH_PRIORITY;
             
         case RiiWynch::Protocol::MessageType::KEEPALIVE:
@@ -239,6 +241,12 @@ bool LoRaTransceiver::receive(RiiWynch::Protocol::Message& msg) {
         int state = radio.readData(buffer, packetLength);
         if (state == RADIOLIB_ERR_NONE) {
             if (RiiWynch::Protocol::MessageParser::deserialize(buffer, packetLength, msg)) {
+                float packetRSSI = radio.getRSSI();
+                if (packetRSSI > -200.0 && packetRSSI < 50.0) {
+                    lastRSSI = packetRSSI;
+                    lastRSSIUpdate = millis();
+                    rssiIsStale = false;
+                }
                 success = true;
             } else {
                 Serial.println("[Transceiver RX] Deserialization failed.");
@@ -261,37 +269,14 @@ float LoRaTransceiver::getRSSI() {
 }
 
 float LoRaTransceiver::getCurrentRSSI() {
-    return lastRSSI;
+    return isRSSIStale() ? -999.0f : lastRSSI;
 }
 
 void LoRaTransceiver::updateRealTimeRSSI() {
-    // Only update RSSI if enough time has passed to avoid excessive polling
-    unsigned long currentTime = millis();
-    if (currentTime - lastRSSIUpdate < 100) { // Update at most every 100ms
-        return;
-    }
-
-    // Try to get mutex with reasonable timeout (increased from 5ms to 50ms)
-    // This gives better chance of success while still avoiding long blocks
-    if (xSemaphoreTake(loraMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Read current RSSI - this works even when in receive mode
-        float newRSSI = radio.getRSSI();
-
-        // Only update if we get a valid reading (not -999 or similar error values)
-        if (newRSSI > -200.0 && newRSSI < 50.0) { // Reasonable RSSI range
-            lastRSSI = newRSSI;
-            lastRSSIUpdate = currentTime;
-            rssiIsStale = false; // Successfully updated
-        }
-
-        xSemaphoreGive(loraMutex);
-    } else {
-        // Mutex acquisition failed - mark RSSI as potentially stale
-        // Check if data is too old
-        if (currentTime - lastRSSIUpdate > RSSI_STALE_THRESHOLD) {
-            rssiIsStale = true;
-            Serial.println("[Transceiver] RSSI data is stale (mutex timeout)");
-        }
+    // RSSI is meaningful for the last valid packet, not as a free-running poll.
+    // Keep this method for callers, but only mark stale when no packet arrived recently.
+    if (millis() - lastRSSIUpdate > RSSI_STALE_THRESHOLD) {
+        rssiIsStale = true;
     }
 }
 

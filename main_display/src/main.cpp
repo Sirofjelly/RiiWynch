@@ -142,7 +142,9 @@ void loop() {
   loraManager.updateRealTimeRSSI();
 
   // Cache button and remote request states for this loop iteration
-  bool startRequested = isStartPressed() || loraManager.getStartMotorRequest();
+  bool localStartPressed = isStartPressed();
+  bool remoteStartRequested = loraManager.getStartMotorRequest();
+  bool startRequested = localStartPressed || remoteStartRequested;
   bool localStopPressed = isStopPressed();
   bool remoteStopRequested = loraManager.getStopMotorRequest();
   
@@ -151,9 +153,18 @@ void loop() {
   bool localStopJustPressed = localStopPressed && !previousLocalStopPressed;
   bool localStopJustReleased = !localStopPressed && previousLocalStopPressed;
 
-  // Handle start button
+  // Handle start button / remote start acceptance
+  StateManager::State stateBeforeStart = state.getState();
+  bool canAcceptRemoteStart = remoteStartRequested &&
+                              (stateBeforeStart == StateManager::State::IDLE ||
+                               stateBeforeStart == StateManager::State::RUNNING) &&
+                              !localStopPressed &&
+                              !isStopRelayInCooldown();
   if (startRequested) {
     state.start();
+    if (canAcceptRemoteStart && state.getState() == StateManager::State::RUNNING) {
+      loraManager.sendStartAccepted();
+    }
   }
   
   // Handle local stop button with new hold-to-stay-stopped logic

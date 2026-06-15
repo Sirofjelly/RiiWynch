@@ -40,9 +40,13 @@ void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t
     sprintf(pctBuf, "%d%%", percentage);
     u8g2.drawStr(6, 13, pctBuf);
 
-    // RSSI
+    // RSSI from last valid Main Unit packet
     char rssiBuf[10];
-    sprintf(rssiBuf, "%.0fdBm", rssi);
+    if (rssi <= -900.0f) {
+        strcpy(rssiBuf, "NO RSSI");
+    } else {
+        sprintf(rssiBuf, "%.0fdBm", rssi);
+    }
     int rssiWidth = u8g2.getStrWidth(rssiBuf);
     int rssiX = (128 - rssiWidth - 20) / 2;
     u8g2.drawStr(rssiX, 13, rssiBuf);
