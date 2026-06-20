@@ -160,7 +160,7 @@ void LoRaManager::handleMessage(const RiiWynch::Protocol::Message& msg) {
     }
 }
 
-void LoRaManager::sendDisplayPercentage(int percentage) {
+bool LoRaManager::sendDisplayPercentage(int percentage) {
     RiiWynch::Protocol::Message msg;
     msg.type = RiiWynch::Protocol::MessageType::DISPLAY_UPDATE;
     msg.source = RiiWynch::Protocol::DeviceID::MAIN_DISPLAY;
@@ -176,8 +176,10 @@ void LoRaManager::sendDisplayPercentage(int percentage) {
             waitingForDspAck = true;
             xSemaphoreGive(dspStateMutex);
         }
+        return true;
     } else {
         Serial.printf("[LORA TX] Failed to send DSP: %d%%\n", percentage);
+        return false;
     }
 }
 

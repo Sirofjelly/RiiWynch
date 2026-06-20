@@ -17,7 +17,7 @@ public:
     bool begin();
     bool restart(); // Restart LoRa with new settings
     void update();
-    void sendDisplayPercentage(int percentage);
+    bool sendDisplayPercentage(int percentage);
     void sendModeUpdate(uint8_t modeIdx); // 🔄 New: send current mode to remote
     void sendLoRaSettings(); // Send current LoRa settings to remote
     void sendRemoteSettings(); // Send remote-specific settings to remote

@@ -52,18 +52,10 @@ unsigned long totalStarts = 0;
 unsigned long totalRuntimeSeconds = 0;
 
 void loadSettings() {
-  // Begin preferences with "riiwynch" namespace in read-write mode
-  if (!preferences.begin("riiwynch", false)) {
-    Serial.println("⚠️ Failed to initialize Preferences");
-    delay(1000);
-    return;
-  }
-  
-  // Load settings for the current profile
+  // Load settings for the current profile. loadSettingsForProfile() owns the
+  // Preferences session; nesting begin()/end() on the same global Preferences
+  // object can corrupt subsequent reads/writes.
   loadSettingsForProfile(currentProfile);
-  
-  // Close the preferences when done
-  preferences.end();
 }
 
 void saveSettings() {
@@ -104,9 +96,10 @@ void loadSettingsForProfile(int profileIndex) {
         stopCooldownDuration = 3000;
         manualMode           = (profileIndex == 3);
         
-        // Save these defaults to this profile's section
-        saveSettingsForProfile(profileIndex);
+        // Save these defaults to this profile's section. Close this read
+        // session first; saveSettingsForProfile() opens its own write session.
         preferences.end();
+        saveSettingsForProfile(profileIndex);
         return;
     }
 
@@ -198,10 +191,10 @@ void loadGlobalSettings() {
     if (!globalExists) {
         Serial.println("⚠️ Global settings not initialized — initializing with defaults.");
         
-        // Use current default values (already set above)
-        // Save these defaults
-        saveGlobalSettings();
+        // Use current default values (already set above). Close this read
+        // session first; saveGlobalSettings() opens its own write session.
         preferences.end();
+        saveGlobalSettings();
         return;
     }
 
@@ -275,7 +268,7 @@ void loadStats() {
 }
 
 void saveStats() {
-    if (!preferences.begin("riiwynch", true)) { // open in read-write
+    if (!preferences.begin("riiwynch", false)) { // open in read-write
         Serial.println("⚠️ Failed to initialize Preferences for stats");
         return;
     }

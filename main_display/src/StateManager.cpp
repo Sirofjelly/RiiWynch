@@ -45,15 +45,17 @@ int StateManager::getDisplayedPercentage() const {
 }
 
 void StateManager::setTargetPercentage(int percentage) {
-    targetPercentage = percentage;
-    displayedPercentage = percentage;
+    int safePercentage = constrain(percentage, 0, 100);
+    targetPercentage = safePercentage;
+    displayedPercentage = safePercentage;
     displayUpdateRequested = true;
     lastUpdateTime = millis();
 }
 
 void StateManager::setDirectPercentage(int percentage) {
-    targetPercentage = percentage;
-    displayedPercentage = percentage;
+    int safePercentage = constrain(percentage, 0, 100);
+    targetPercentage = safePercentage;
+    displayedPercentage = safePercentage;
     displayUpdateRequested = true;
     lastUpdateTime = millis();
 }
