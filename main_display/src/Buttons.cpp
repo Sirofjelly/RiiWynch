@@ -25,8 +25,6 @@ bool isStartPressed() {
 }
 
 bool isStopPressed() {
-  // Fail-safe stop input: a normally-closed stop switch should hold the pin LOW.
-  // Pressed/open/broken-wire reads HIGH and forces STOP.
   return digitalRead(STOP_BUTTON_PIN) == HIGH;
 }
 

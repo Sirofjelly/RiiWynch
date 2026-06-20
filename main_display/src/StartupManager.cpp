@@ -22,7 +22,6 @@ int rampStartAngle = 0;
 int rampTargetAngle = 0;
 
 int percentageToAngle(int p) {
-  p = constrain(p, 0, 100);
   if (p < 5) return 0;
   if (p == 5) return gasIdleAngle;
   float step = float(p - 5) / 95.0;
@@ -111,7 +110,7 @@ void updateStartup(bool startPressed, bool stopPressed, bool disconnectedLocalOv
       if (progress >= 1.0f) {
         gasServo.write(rampTargetAngle);
         rampStartAngle = rampTargetAngle;
-        rampTargetAngle = percentageToAngle(stage2SpeedPercentage);
+        rampTargetAngle = gasMaxAngle; // 100%
         stateStartTime = millis();
         currentState = RAMP_STAGE_2;
       } else {
@@ -125,8 +124,8 @@ void updateStartup(bool startPressed, bool stopPressed, bool disconnectedLocalOv
       if (manualMode) break;
       float progress = float(millis() - stateStartTime) / stage2Duration;
       if (progress >= 1.0f) {
-        gasServo.write(rampTargetAngle);
-        rampStartAngle = rampTargetAngle;
+        gasServo.write(gasMaxAngle);
+        rampStartAngle = gasMaxAngle;
         rampTargetAngle = calculateTargetAngle();
         stateStartTime = millis();
         currentState = RAMP_STAGE_3;

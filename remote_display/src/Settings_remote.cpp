@@ -45,10 +45,10 @@ void loadGlobalLoRaSettings() {
     if (!globalExists) {
         Serial.println("⚠️ [Remote] Global settings not initialized — using defaults.");
         
-        // Use current default values (already set above). Close this read
-        // session first; saveGlobalLoRaSettings() opens its own write session.
-        preferences.end();
+        // Use current default values (already set above)
+        // Save these defaults
         saveGlobalLoRaSettings();
+        preferences.end();
         return;
     }
 

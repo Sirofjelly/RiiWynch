@@ -323,13 +323,13 @@ void drawForState() {
 uint16_t readBattery() {
     // Heltec V3 voltage divider: VBAT - 390k - GPIO1 - 100k - GND
     // Divider ratio: (390k + 100k) / 100k = 4.9
-    // GPIO37 (ADC_CTRL) must be LOW to enable reading on WiFi LoRa 32 V3/V3.1.
+    // GPIO37 (ADC_CTRL) must be LOW to enable reading (HIGH for V3.2 boards)
     const float VREF = 3.3;        // ADC reference voltage
     const int MAX = 4095;          // 12-bit ADC resolution
-    const float DIVIDER = 4.9f;    // Voltage divider ratio ((390k + 100k) / 100k)
+    const float DIVIDER = 4;  // Voltage divider ratio ((390k + 100k) / 100k)
 
-    // Enable battery voltage divider.
-    digitalWrite(ADC_CTRL, LOW);
+    // Enable battery voltage divider (LOW for V3/V3.1, use HIGH only on boards that require it)
+    digitalWrite(ADC_CTRL, HIGH);
     delayMicroseconds(100);  // Let voltage stabilize
 
     // Average multiple readings to reduce ADC noise

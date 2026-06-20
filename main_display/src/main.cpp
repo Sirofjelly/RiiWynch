@@ -293,6 +293,8 @@ void handleDisplayUpdates(bool isStopped) {
           (timeSinceLastTx >= LORA_TRANSMISSION_THROTTLE)) {
           shouldSendNow = true;
           pctToSend = dispPct;
+          lastSentDisplayPct = dispPct;
+          lastLoRaTransmissionTime = currentTime;
       } else if (dispPct != lastSentDisplayPct && !percentageHasStabilized) {
           // If we're waiting for stabilization, log it for debugging
           unsigned long timeRemaining = PERCENTAGE_STABILIZATION_DELAY - timeSinceChange;
@@ -307,14 +309,7 @@ void handleDisplayUpdates(bool isStopped) {
   // Perform LoRa transmission outside of mutex to avoid holding lock during I/O
   if (shouldSendNow) {
       Serial.printf("[Main Loop] Percentage stabilized at %d%%, syncing to remote\n", pctToSend);
-      bool sent = loraManager.sendDisplayPercentage(pctToSend);
-      if (displayUpdateMutex != NULL && xSemaphoreTake(displayUpdateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          lastLoRaTransmissionTime = millis(); // throttle retries even if this attempt failed
-          if (sent) {
-              lastSentDisplayPct = pctToSend;
-          }
-          xSemaphoreGive(displayUpdateMutex);
-      }
+      loraManager.sendDisplayPercentage(pctToSend);
   }
 
   // Send periodic mode updates when motor is not running to keep remote in sync

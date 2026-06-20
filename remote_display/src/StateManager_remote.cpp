@@ -85,5 +85,5 @@ bool StateManager_remote::isMenuTimedOut(unsigned long timeout) const {
 }
 
 void StateManager_remote::setTargetPercentage(int percentage) {
-    _targetPercentage = constrain(percentage, 0, 100);
-}
+    _targetPercentage = percentage;
+} 
