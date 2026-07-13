@@ -60,7 +60,8 @@ TaskHandle_t heartbeatTaskHandle = NULL;
 
 // ─── Pins ───
 #define VEXT     21
-#define VBAT     1 // Battery voltage pin for Heltec WiFi LoRa 32 V3 is GPIO1
+#define VBAT     1  // Battery voltage pin for Heltec V3 is GPIO1 (voltage divider output)
+#define ADC_CTRL 37 // ADC control pin (must be LOW to enable the onboard divider)
 
 // ─── Application State ───
 float currentRSSI = 0.0f;
@@ -235,21 +236,26 @@ void drawForState() {
 uint16_t readBattery() {
     const float VREF = 3.3;        // Reference voltage for ADC
     const int MAX = 4095;          // 12-bit ADC resolution
-    const float DIV = 5.15;         // Voltage divider ratio (2x100k resistors on Heltec board)
+    const float DIV = 4.9;          // Voltage divider ratio for Heltec V3 (390k + 100k -> 4.9)
     const float MIN_VOLTAGE = 2.5; // Minimum discharge voltage
     const float MAX_VOLTAGE = 4.2; // Maximum charge voltage
     
-    // On V3 boards, the battery voltage divider is always connected to GPIO1.
-    // No ADC_CTRL pin is needed.
+    // On Heltec V3 boards the divider is controlled by ADC_CTRL.
+    // Ensure ADC_CTRL is LOW to connect the divider, then sample VBAT (GPIO1).
+    digitalWrite(ADC_CTRL, LOW);
+    delayMicroseconds(100);
     int raw = analogRead(VBAT);
-    
+
     // Calculate actual voltage
     float voltage = (raw * VREF / MAX) * DIV;
-    
+
     // Calculate percentage based on voltage range
     float percentage = (voltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE) * 100.0;
     percentage = constrain(percentage, 0.0, 100.0);
-    
+
+    // Debug output to help diagnose wiring/pin issues
+    Serial.printf("[BAT] raw=%d, volt=%.3fV, pct=%.1f%%\n", raw, voltage, percentage);
+
     // Return voltage in millivolts
     return (uint16_t)(voltage * 1000);
 }
@@ -263,6 +269,11 @@ void setup() {
 
     pinMode(VEXT, OUTPUT); digitalWrite(VEXT, LOW);
     analogReadResolution(12);
+    pinMode(ADC_CTRL, OUTPUT);
+    digitalWrite(ADC_CTRL, LOW); // Enable voltage divider by default
+    // Ensure ADC attenuation is set so the ADC can read up to battery voltage
+    // Use ADC_11db (~3.6V - 3.9V range) on ESP32 for LiPo measurement
+    analogSetPinAttenuation(VBAT, ADC_11db);
 
     // Load global LoRa settings
     loadGlobalLoRaSettings();
@@ -360,8 +371,8 @@ void loop() {
                 Serial.println("ARMING → CRUISING (START_MOTOR sent)");
                 loraManager.sendStartMotor();
                 stateManager.switchToCruising();
-                lastKeepaliveTime = millis(); // Send first keepalive immediately
-                noButtonPressStartTime = 0; // Reset this timer
+                lastKeepaliveTime = millis();
+                noButtonPressStartTime = 0;
             }
             break;
         }
