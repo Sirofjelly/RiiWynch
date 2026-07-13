@@ -236,7 +236,8 @@ void drawForState() {
 uint16_t readBattery() {
     const float VREF = 3.3;        // Reference voltage for ADC
     const int MAX = 4095;          // 12-bit ADC resolution
-    const float DIV = 4.9;          // Voltage divider ratio for Heltec V3 (390k + 100k -> 4.9)
+    // Calibrated divider ratio. Measured display=3.4V but actual=3.6V -> factor ~1.0588
+    const float DIV = 5.189;        // Calibrated voltage divider ratio
     const float MIN_VOLTAGE = 2.5; // Minimum discharge voltage
     const float MAX_VOLTAGE = 4.2; // Maximum charge voltage
     
