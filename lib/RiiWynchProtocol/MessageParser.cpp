@@ -17,8 +17,13 @@ bool MessageParser::deserialize(const uint8_t* buffer, size_t bufferSize, Messag
         return false; // Not enough data
     }
     memcpy(&msg, buffer, sizeof(Message));
-    // A simple validation to check if the message type is within the defined enum range
-    if (msg.type > MessageType::MODE_UPDATE) {
+
+    // Validate the message type against the full enum range.
+    // The previous check only allowed up to MODE_UPDATE, which incorrectly
+    // rejected newer ACK messages such as ACK_START_MOTOR.
+    const auto typeValue = static_cast<uint8_t>(msg.type);
+    const auto maxValue = static_cast<uint8_t>(MessageType::ACK_REMOTE_SETTINGS);
+    if (typeValue == static_cast<uint8_t>(MessageType::INVALID) || typeValue > maxValue) {
         return false;
     }
     return true;

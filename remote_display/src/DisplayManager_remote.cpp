@@ -51,14 +51,9 @@ void DisplayManager_remote::drawStartScreen(int percentage, float rssi, uint16_t
     int rssiX = (128 - rssiWidth - 20) / 2;
     u8g2.drawStr(rssiX, 13, rssiBuf);
 
-    // Battery — warn visually when below safe threshold
-    static const uint16_t LOW_BATTERY_MV = 3500; // 3.5 V
+    // Battery — show the measured voltage directly
     char batBuf[8];
-    if (battery_mv > 0 && battery_mv < LOW_BATTERY_MV) {
-        strcpy(batBuf, "LOW!");
-    } else {
-        sprintf(batBuf, "%.1fV", battery_mv / 1000.0);
-    }
+    sprintf(batBuf, "%.1fV", battery_mv / 1000.0);
     u8g2.drawStr(128 - u8g2.getStrWidth(batBuf) - 6, 13, batBuf);
     
     // Delay indicator at bottom center

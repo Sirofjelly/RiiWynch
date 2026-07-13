@@ -130,8 +130,8 @@ void DisplayManager::drawStopScreen(int percentage, float rssi, const char* mode
   u8g2.clearBuffer();
   RiiWynch::UI::drawFrame(u8g2);
 
-  // Title: distinguish between a deliberate local stop and a remote disconnect
-  const char* title = isConnected ? "STOP" : "NO LINK";
+  // Keep the stop screen simple: show STOP, and use the status area for link state.
+  const char* title = "STOP";
   u8g2.setFont(u8g2_font_logisoso28_tf);
   int16_t titleWidth = u8g2.getStrWidth(title);
   u8g2.drawStr((128 - titleWidth) / 2, 46, title);
@@ -153,8 +153,8 @@ void DisplayManager::drawStopScreen(int percentage, float rssi, const char* mode
     int16_t rssiWidth = u8g2.getStrWidth(rssiBuf);
     u8g2.drawStr(128 - rssiWidth - 6, 13, rssiBuf);
   } else {
-    // Show disconnected icon instead of RSSI when not connected
-    const char* noRemote = "No Remote";
+    // Show the disconnect status in the same top-right area as RSSI.
+    const char* noRemote = "NO REMOTE";
     int16_t noRemoteWidth = u8g2.getStrWidth(noRemote);
     u8g2.drawStr(128 - noRemoteWidth - 6, 13, noRemote);
   }

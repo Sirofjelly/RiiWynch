@@ -236,8 +236,10 @@ void handleDisplayUpdates(bool isStopped) {
   static bool lastModeActive = false; // Track mode display state
   static unsigned long lastModeUpdateTime = 0; // Track last mode update sent
   static unsigned long lastLoRaTransmissionTime = 0; // Track last LoRa transmission time
+  static unsigned long lastDisplayRefreshTime = 0; // Track last screen refresh for RSSI updates
   static const unsigned long MODE_UPDATE_INTERVAL = 2000; // Send mode every 2 seconds when not running
   static const unsigned long LORA_TRANSMISSION_THROTTLE = 250; // Minimum 250ms between LoRa transmissions
+  static const unsigned long DISPLAY_REFRESH_INTERVAL = 250; // Refresh screen even if nothing else changed
 
   // Protected by displayUpdateMutex: Delayed sending mechanism to reduce LoRa traffic during rapid changes
   static int lastStableDisplayPct = -1; // Track last stable percentage value
@@ -249,21 +251,30 @@ void handleDisplayUpdates(bool isStopped) {
 
   int dispPct = state.getDisplayedPercentage();
   const char* currentMode = profileManager.getCurrentModeName();
-  bool isConnected = heartbeatManager.isRemoteConnected();
+  float currentRssi = loraManager.getCurrentRSSI();
+  bool hasFreshRssi = currentRssi > -900.0f;
+  bool isConnected = heartbeatManager.isRemoteConnected() || hasFreshRssi;
+
+  bool shouldRefreshDisplay = false;
+  unsigned long currentTime = millis();
+  if (currentTime - lastDisplayRefreshTime >= DISPLAY_REFRESH_INTERVAL) {
+      shouldRefreshDisplay = true;
+      lastDisplayRefreshTime = currentTime;
+  }
 
   if (isStopped) {
       // Draw STOP screen with mode and connection info - using real-time RSSI
-      display.drawStopScreen(dispPct, loraManager.getCurrentRSSI(), currentMode, isConnected);
+      display.drawStopScreen(dispPct, currentRssi, currentMode, isConnected);
   } else {
       // If the mode screen just finished, draw the percentage screen once
       if (!modeActive && lastModeActive && !isStopped) {
-          display.update(dispPct, loraManager.getCurrentRSSI(), currentMode, isConnected);
+          display.update(dispPct, currentRssi, currentMode, isConnected);
       }
 
       // Regular percentage display logic
-      if (state.needsDisplayUpdate() || wasStopped) {
+      if (state.needsDisplayUpdate() || wasStopped || shouldRefreshDisplay) {
           state.updateDisplayStep();
-          display.update(dispPct, loraManager.getCurrentRSSI(), currentMode, isConnected);
+          display.update(dispPct, currentRssi, currentMode, isConnected);
       }
   }
 

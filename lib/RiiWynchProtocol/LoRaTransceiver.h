@@ -42,7 +42,7 @@ private:
     float lastRSSI;
     unsigned long lastRSSIUpdate;
     bool rssiIsStale; // True if RSSI couldn't be updated due to mutex timeout
-    static const unsigned long RSSI_STALE_THRESHOLD = 2000; // ms - RSSI older than this is considered stale
+    static const unsigned long RSSI_STALE_THRESHOLD = 10000; // ms - RSSI older than this is considered stale
     
     // TX failure watchdog
     uint8_t _consecutiveTxFailures = 0;

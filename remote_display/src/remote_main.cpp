@@ -1,13 +1,11 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <FreeRTOS.h>
-#include <atomic>
 #include "LoRaManager_remote.h"
 #include "Button.h"
 #include "DisplayManager_remote.h"
 #include "StateManager_remote.h"
 #include "Settings_remote.h"
-#include "SnakeGame.h"
 
 // ─────────────────────────────────────────
 //         BASIC FORWARD DECLARATIONS
@@ -25,18 +23,7 @@ void decPctSingle();
 void onLoraSettingsReceived();
 void onLoraRemoteSettingsReceived();
 void onLoraStopMotor();
-void onLoraStartAccepted();
 void onLoraModeUpdate(uint8_t idx);
-void requestStopMotor(const char* reason);
-void processStopBurst();
-void resetStartAcceptanceWait();
-
-// Game Globals
-SnakeGame snakeGame;
-unsigned long lastGameTick = 0;
-const unsigned long GAME_TICK_MS = 200;
-bool gamePaused = false;
-bool isNewHighScore = false;
 
 // ─────────────────────────────────────────
 //            CONFIGURATION CONSTANTS
@@ -45,7 +32,7 @@ namespace Config {
     static const unsigned long DEBOUNCE_MS = 20;
     static const unsigned long REPEAT_MS = 200;
     static const unsigned long MENU_TIMEOUT_MS = 1500;
-    static const unsigned long START_UPDATE_MS = 50;  // Reduced from 500ms to 50ms for responsive display
+    static const unsigned long START_UPDATE_MS = 500;
     static const unsigned long TRIPLE_TAP_WINDOW = 1500;
     static const int PERCENTAGE_STEP = 5;
     static const int SMOOTH_UPDATE_MS = 50;
@@ -54,10 +41,6 @@ namespace Config {
     // New constants for dead man's switch logic
     static const unsigned long ARMING_DURATION_MS = 1000;
     static const unsigned long KEEPALIVE_INTERVAL_MS = 500;
-    static const unsigned long START_RETRY_INTERVAL_MS = 300;
-    static const uint8_t START_MAX_ATTEMPTS = 5;
-    static const unsigned long STOP_BURST_INTERVAL_MS = 200;
-    static const uint8_t STOP_BURST_COUNT = 5;
     // NO_BUTTON_TIMEOUT_MS moved to global variable remoteStopDelayMs
     static const unsigned long HEARTBEAT_INTERVAL_MS = 500;
     // Dual-button gesture timings
@@ -76,9 +59,8 @@ Button downButton(4);
 TaskHandle_t heartbeatTaskHandle = NULL;
 
 // ─── Pins ───
-#define VEXT      21
-#define VBAT      1   // Battery voltage pin (GPIO1) - voltage divider output
-#define ADC_CTRL  37  // ADC control pin - must be LOW to enable battery reading
+#define VEXT     21
+#define VBAT     1 // Battery voltage pin for Heltec WiFi LoRa 32 V3 is GPIO1
 
 // ─── Application State ───
 float currentRSSI = 0.0f;
@@ -87,16 +69,9 @@ unsigned long armingStartTime = 0;
 unsigned long noButtonPressStartTime = 0;
 unsigned long lastKeepaliveTime = 0;
 bool stopDelayActive = false; // Flag for delayed stop functionality
-bool waitingForStartAcceptance = false;
-uint8_t startSendAttempts = 0;
-unsigned long lastStartSendTime = 0;
-bool stopBurstActive = false;
-uint8_t stopBurstRemaining = 0;
-unsigned long lastStopBurstSendTime = 0;
 
-// 🔄 Mode tracking - use atomic to protect against race conditions
-// between LoRa callback (write) and main loop (read)
-static std::atomic<uint8_t> currentModeIdx{0};
+// 🔄 Mode tracking
+static uint8_t currentModeIdx = 0;
 static const char* modeNames[4] = {"SURF", "SKIM", "SMOOTH", "MANUAL"};
 
 // ─── Remote Settings ───
@@ -114,7 +89,7 @@ static bool dualActionProcessed = false;    // Prevent multiple toggles per gest
 // ─────────────────────────────────────────
 
 void onLoraDisplayUpdate(int percentage, float rssi) {
-    currentRSSI = rssi; // Keep this as fallback, but real-time RSSI is now used for display
+    currentRSSI = rssi;
     Serial.printf("[LORA CB] DSP: %d%% (current state: %d, targetPct: %d, shownPct: %d)\n", 
                  percentage, (int)stateManager.getState(), stateManager.getTargetPercentage(), stateManager.getShownPercentage());
 
@@ -147,28 +122,13 @@ void onLoraStopMotor() {
     Serial.println("[Remote] STOP_MOTOR received – switching to IDLE");
     stateManager.switchToIdle();
     stopDelayActive = false; // Reset delay flag when ride ends
-    resetStartAcceptanceWait();
-    stopBurstActive = false;
 }
 
-void onLoraStartAccepted() {
-    if (stateManager.getState() == StateManager_remote::State::ARMING && waitingForStartAcceptance) {
-        Serial.println("[Remote] Start accepted by Main → CRUISING");
-        resetStartAcceptanceWait();
-        stateManager.switchToCruising();
-        lastKeepaliveTime = 0; // Send ride supervision immediately
-        noButtonPressStartTime = 0;
-    } else {
-        Serial.println("[Remote] Late/unexpected start acceptance ignored; sending STOP burst");
-        requestStopMotor("late start acceptance");
-    }
-}
-
-// 🔄 MODE_UPDATE callback - uses atomic store for thread safety
+// 🔄 MODE_UPDATE callback
 void onLoraModeUpdate(uint8_t idx) {
     Serial.printf("[Remote] onLoraModeUpdate called with idx=%d\n", idx);
     if (idx < 4) {
-        currentModeIdx.store(idx, std::memory_order_release);
+        currentModeIdx = idx;
         Serial.printf("[Remote] Mode updated to %s (%d)\n", modeNames[idx], idx);
     } else {
         Serial.printf("[Remote] Invalid mode index received: %d\n", idx);
@@ -215,23 +175,14 @@ void handleUpButtonPress() {
         enterMenuOnTriplePress();
     } else if (stateManager.getState() == StateManager_remote::State::MENU) {
         handleMenuNavigation(true);
-            } else if (stateManager.getState() == StateManager_remote::State::GAME) {
-                snakeGame.turnLeft();
-            } else if (stateManager.getState() == StateManager_remote::State::GAME_OVER) {
-                stateManager.switchToIdle();
-                lastDisplayUpdate = 0; // Force immediate update
-            }}
+    }
+}
 
 void handleDownButtonPress() {
     if (stateManager.getState() == StateManager_remote::State::IDLE) {
         enterMenuOnTriplePress();
     } else if (stateManager.getState() == StateManager_remote::State::MENU) {
         handleMenuNavigation(false);
-    } else if (stateManager.getState() == StateManager_remote::State::GAME) {
-        snakeGame.turnRight();
-    } else if (stateManager.getState() == StateManager_remote::State::GAME_OVER) {
-        stateManager.switchToIdle();
-        lastDisplayUpdate = 0; // Force immediate update
     }
 }
 
@@ -266,84 +217,39 @@ void heartbeatTask(void *parameter) {
     }
 }
 
-void resetStartAcceptanceWait() {
-    waitingForStartAcceptance = false;
-    startSendAttempts = 0;
-    lastStartSendTime = 0;
-}
-
-void requestStopMotor(const char* reason) {
-    Serial.printf("[Remote] STOP burst requested: %s\n", reason);
-    loraManager.sendStopMotor();
-    stopBurstActive = true;
-    stopBurstRemaining = Config::STOP_BURST_COUNT - 1;
-    lastStopBurstSendTime = millis();
-}
-
-void processStopBurst() {
-    if (!stopBurstActive) return;
-
-    if (stopBurstRemaining == 0) {
-        stopBurstActive = false;
-        return;
-    }
-
-    if (millis() - lastStopBurstSendTime >= Config::STOP_BURST_INTERVAL_MS) {
-        loraManager.sendStopMotor();
-        stopBurstRemaining--;
-        lastStopBurstSendTime = millis();
-        Serial.printf("[Remote] STOP burst repeat sent, remaining=%u\n", stopBurstRemaining);
-    }
-}
-
 // ─────────────────────────────────────────
 //              DISPLAY LOGIC
 // ─────────────────────────────────────────
 void drawForState() {
-    // Atomic load of mode index for thread safety with LoRa callback
-    uint8_t modeIdx = currentModeIdx.load(std::memory_order_acquire);
-
     switch(stateManager.getState()) {
         case StateManager_remote::State::IDLE:
         case StateManager_remote::State::ARMING:
         case StateManager_remote::State::CRUISING:
-             displayManager.drawStartScreen(stateManager.getShownPercentage(), loraManager.getCurrentRSSI(), readBattery(), stateManager.getState(), modeNames[modeIdx], stopDelayActive, remoteStopDelayMs);
+             displayManager.drawStartScreen(stateManager.getShownPercentage(), currentRSSI, readBattery(), stateManager.getState(), modeNames[currentModeIdx], stopDelayActive, remoteStopDelayMs);
             break;
         case StateManager_remote::State::MENU:
             displayManager.drawMenuScreen(stateManager.getShownPercentage());
             break;
-        case StateManager_remote::State::GAME:
-            displayManager.drawGameScreen(snakeGame, snakeHighScore);
-            break;
-        case StateManager_remote::State::GAME_OVER:
-            displayManager.drawGameOverScreen(snakeGame.getScore(), snakeHighScore, isNewHighScore);
-            break;
     }
 }
 uint16_t readBattery() {
-    // Heltec V3 voltage divider: VBAT - 390k - GPIO1 - 100k - GND
-    // Divider ratio: (390k + 100k) / 100k = 4.9
-    // GPIO37 (ADC_CTRL) must be LOW to enable reading (HIGH for V3.2 boards)
-    const float VREF = 3.3;        // ADC reference voltage
+    const float VREF = 3.3;        // Reference voltage for ADC
     const int MAX = 4095;          // 12-bit ADC resolution
-    const float DIVIDER = 4;  // Voltage divider ratio ((390k + 100k) / 100k)
-
-    // Enable battery voltage divider (LOW for V3/V3.1, use HIGH only on boards that require it)
-    digitalWrite(ADC_CTRL, HIGH);
-    delayMicroseconds(100);  // Let voltage stabilize
-
-    // Average multiple readings to reduce ADC noise
-    const int NUM_SAMPLES = 16;
-    uint32_t rawSum = 0;
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-        rawSum += analogRead(VBAT);
-        delayMicroseconds(50);
-    }
-    int raw = rawSum / NUM_SAMPLES;
-
-    // Calculate actual voltage: ADC_voltage * divider_ratio
-    float voltage = (raw * VREF / MAX) * DIVIDER;
-
+    const float DIV = 5.15;         // Voltage divider ratio (2x100k resistors on Heltec board)
+    const float MIN_VOLTAGE = 2.5; // Minimum discharge voltage
+    const float MAX_VOLTAGE = 4.2; // Maximum charge voltage
+    
+    // On V3 boards, the battery voltage divider is always connected to GPIO1.
+    // No ADC_CTRL pin is needed.
+    int raw = analogRead(VBAT);
+    
+    // Calculate actual voltage
+    float voltage = (raw * VREF / MAX) * DIV;
+    
+    // Calculate percentage based on voltage range
+    float percentage = (voltage - MIN_VOLTAGE) / (MAX_VOLTAGE - MIN_VOLTAGE) * 100.0;
+    percentage = constrain(percentage, 0.0, 100.0);
+    
     // Return voltage in millivolts
     return (uint16_t)(voltage * 1000);
 }
@@ -356,13 +262,10 @@ void setup() {
     Serial.println("Starting Setup of Remote...");
 
     pinMode(VEXT, OUTPUT); digitalWrite(VEXT, LOW);
-    pinMode(ADC_CTRL, OUTPUT);
     analogReadResolution(12);
-    analogSetPinAttenuation(VBAT, ADC_11db);  // Set proper ADC range for battery voltage reading
 
     // Load global LoRa settings
     loadGlobalLoRaSettings();
-    loadSnakeHighScore();
 
     displayManager.begin();
     drawForState();
@@ -376,7 +279,6 @@ void setup() {
     loraManager.onLoRaSettingsReceived(onLoraSettingsReceived);
     loraManager.onRemoteSettingsReceived(onLoraRemoteSettingsReceived);
     loraManager.onStopMotor(onLoraStopMotor);
-    loraManager.onStartAccepted(onLoraStartAccepted);
     loraManager.onModeUpdate(onLoraModeUpdate);
 
     // --- Button Callbacks ---
@@ -400,10 +302,6 @@ void loop() {
     upButton.update();
     downButton.update();
 
-    // Update RSSI staleness and reliable stop retransmission
-    loraManager.updateRealTimeRSSI();
-    processStopBurst();
-
     bool anyButtonPressed = upButton.isPressed() || downButton.isPressed();
 
     switch (stateManager.getState()) {
@@ -425,7 +323,6 @@ void loop() {
                     } else if (millis() - firstButtonTime > Config::DUAL_PRESS_WINDOW_MS) {
                         // Treated as single-button press → enter ARMING
                         dualState = DualPressState::IDLE_WAIT;
-                        resetStartAcceptanceWait();
                         stateManager.switchToArming();
                         armingStartTime = millis();
                         Serial.println("IDLE → ARMING (single button confirmed)");
@@ -436,31 +333,10 @@ void loop() {
                     break;
 
                 case DualPressState::BOTH_DOWN:
-                     // 1. Check for Game Entry (Hold Both > 2s)
-                    if (millis() - bothButtonsTime > 2000) {
-                        Serial.println("Entering Snake Game!");
-                        
-                        // Revert the delay toggle if it happened at 600ms
-                        if (dualActionProcessed) {
-                            stopDelayActive = !stopDelayActive;
-                            Serial.println("[Remote] Delay toggle reverted due to Game Entry");
-                        }
-                        
-                        stateManager.switchToGame();
-                        snakeGame.reset();
-                        gamePaused = false;
-                        
-                        // Reset FSM
-                        dualState = DualPressState::IDLE_WAIT;
-                        dualActionProcessed = false;
-                        return;
-                    }
-
                     if (!(upButton.isPressed() && downButton.isPressed())) {
                         // One or both buttons released → reset FSM
                         dualState = DualPressState::IDLE_WAIT;
                     } else {
-                        // 2. Normal Delay Toggle (Hold Both > 600ms)
                         if (!dualActionProcessed && millis() - bothButtonsTime >= Config::DELAY_HOLD_MS) {
                             stopDelayActive = !stopDelayActive;
                             dualActionProcessed = true;
@@ -475,45 +351,30 @@ void loop() {
 
         case StateManager_remote::State::ARMING: {
             if (!anyButtonPressed) {
-                if (waitingForStartAcceptance) {
-                    requestStopMotor("arming released while waiting for start acceptance");
-                }
-                resetStartAcceptanceWait();
                 stateManager.switchToIdle();
                 Serial.println("ARMING → IDLE");
                 break;
             }
             
             if (millis() - armingStartTime >= Config::ARMING_DURATION_MS) {
-                waitingForStartAcceptance = true;
-
-                if (startSendAttempts < Config::START_MAX_ATTEMPTS &&
-                    (startSendAttempts == 0 || millis() - lastStartSendTime >= Config::START_RETRY_INTERVAL_MS)) {
-                    startSendAttempts++;
-                    lastStartSendTime = millis();
-                    Serial.printf("ARMING: START_MOTOR attempt %u/%u\n", startSendAttempts, Config::START_MAX_ATTEMPTS);
-                    loraManager.sendStartMotor();
-                } else if (startSendAttempts >= Config::START_MAX_ATTEMPTS &&
-                           millis() - lastStartSendTime >= Config::START_RETRY_INTERVAL_MS) {
-                    Serial.println("ARMING → IDLE (START FAILED: no acceptance)");
-                    requestStopMotor("start acceptance timeout");
-                    resetStartAcceptanceWait();
-                    stateManager.switchToIdle();
-                }
+                Serial.println("ARMING → CRUISING (START_MOTOR sent)");
+                loraManager.sendStartMotor();
+                stateManager.switchToCruising();
+                lastKeepaliveTime = millis(); // Send first keepalive immediately
+                noButtonPressStartTime = 0; // Reset this timer
             }
             break;
         }
 
         case StateManager_remote::State::CRUISING: {
-            bool rideSupervisionActive = anyButtonPressed || stopDelayActive;
-            if (rideSupervisionActive && millis() - lastKeepaliveTime >= Config::KEEPALIVE_INTERVAL_MS) {
-                loraManager.sendKeepalive();
-                lastKeepaliveTime = millis();
-                Serial.println("KEEPALIVE sent");
-            }
-
             if (anyButtonPressed) {
                 noButtonPressStartTime = 0; // Reset timer because a button is pressed
+
+                if (millis() - lastKeepaliveTime >= Config::KEEPALIVE_INTERVAL_MS) {
+                    loraManager.sendKeepalive();
+                    lastKeepaliveTime = millis();
+                    Serial.println("KEEPALIVE sent");
+                }
             } else { // No buttons are pressed
                 if (stopDelayActive) {
                     // Use delay logic when delay is active
@@ -522,15 +383,15 @@ void loop() {
                         noButtonPressStartTime = millis();
                         Serial.println("No button press timer started (with delay)...");
                     } else if (millis() - noButtonPressStartTime >= remoteStopDelayMs) {
-                        Serial.println("CRUISING → IDLE (STOP_MOTOR burst after delay)");
-                        requestStopMotor("remote stop delay elapsed");
+                        Serial.println("CRUISING → IDLE (STOP_MOTOR sent after delay)");
+                        loraManager.sendStopMotor();
                         stateManager.switchToIdle();
                         stopDelayActive = false; // Reset delay flag when ride ends
                     }
                 } else {
                     // Immediate stop when delay is not active
-                    Serial.println("CRUISING → IDLE (STOP_MOTOR burst immediately)");
-                    requestStopMotor("buttons released without delay");
+                    Serial.println("CRUISING → IDLE (STOP_MOTOR sent immediately)");
+                    loraManager.sendStopMotor();
                     stateManager.switchToIdle();
                 }
             }
@@ -551,59 +412,9 @@ void loop() {
             }
             break;
         }
-
-        case StateManager_remote::State::GAME: {
-             // Pause (Both buttons 600ms)
-             static unsigned long gameBothPressStart = 0;
-             if (upButton.isPressed() && downButton.isPressed()) {
-                 if (gameBothPressStart == 0) gameBothPressStart = millis();
-                 else if (millis() - gameBothPressStart > 600) {
-                     gamePaused = !gamePaused;
-                     gameBothPressStart = 0; // Reset to avoid rapid toggling
-                 }
-             } else {
-                 gameBothPressStart = 0;
-             }
-
-             if (!gamePaused && millis() - lastGameTick > snakeGame.getCurrentSpeed()) {
-                 snakeGame.update();
-                 lastGameTick = millis();
-                 if (snakeGame.isGameOver()) {
-                     uint16_t score = snakeGame.getScore();
-                     isNewHighScore = (score > snakeHighScore);
-                     if (isNewHighScore) {
-                         snakeHighScore = score;
-                         saveSnakeHighScore();
-                     }
-                     stateManager.switchToGameOver();
-                 }
-             }
-             break;
-        }
-
-        case StateManager_remote::State::GAME_OVER: {
-             // Button handling is done via callbacks
-             break;
-        }
     }
 
     stateManager.updateShownPercentage(Config::SMOOTH_STEP, Config::SMOOTH_UPDATE_MS);
-
-    // Periodic low-battery watchdog
-    static unsigned long lastBatWatchdog = 0;
-    static const unsigned long BAT_WATCHDOG_INTERVAL_MS = 15000; // Check every 15 s
-    static const uint16_t BATTERY_WARN_MV = 3500;               // 3.5 V warning threshold
-    static const uint16_t BATTERY_CRIT_MV = 3300;               // 3.3 V critical threshold
-    unsigned long currentMs = millis();
-    if (currentMs - lastBatWatchdog >= BAT_WATCHDOG_INTERVAL_MS) {
-        uint16_t batMv = readBattery();
-        if (batMv > 0 && batMv < BATTERY_CRIT_MV) {
-            Serial.printf("[Battery] CRITICAL: %.2fV — charge immediately!\n", batMv / 1000.0f);
-        } else if (batMv > 0 && batMv < BATTERY_WARN_MV) {
-            Serial.printf("[Battery] WARNING: Low battery %.2fV\n", batMv / 1000.0f);
-        }
-        lastBatWatchdog = currentMs;
-    }
 
     // Centralized display update
     if (millis() - lastDisplayUpdate >= Config::START_UPDATE_MS) {
